@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.applications import router as applications_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
+from app.api.v1.notifications import router as notifications_router
 from app.api.v1.profile import router as profile_router
 from app.api.v1.resumes import router as resumes_router
 from app.api.v1.users import router as users_router
@@ -72,6 +73,7 @@ def create_application() -> FastAPI:
     application.include_router(profile_router, prefix=settings.API_V1_STR)
     application.include_router(resumes_router, prefix=settings.API_V1_STR)
     application.include_router(applications_router, prefix=settings.API_V1_STR)
+    application.include_router(notifications_router, prefix=settings.API_V1_STR)
 
     return application
 
