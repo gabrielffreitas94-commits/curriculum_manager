@@ -22,6 +22,9 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.db
+*.sqlite
+*.sqlite3
 
 # Testing & Coverage
 .pytest_cache/
