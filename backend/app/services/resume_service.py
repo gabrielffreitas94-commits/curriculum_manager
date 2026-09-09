@@ -16,9 +16,15 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.gemini_ai_adapter import GeminiAIAdapter
-from app.api.v1.schemas.resume import ResumeGenerateRequest, ResumeGenerateResponse
+from app.api.v1.schemas.resume import (
+    MatchAnalysisItemSchema,
+    MatchPreviewResponse,
+    ResumeGenerateRequest,
+    ResumeGenerateResponse,
+)
 from app.core.crypto import crypto_service
 from app.core.grounding_audit import GroundingAuditEngine
+from app.core.vector_match import VectorMatchEngine
 from app.domain.models import Application, GeneratedResume, PromptSkill, User
 from app.ports.ai_port import AIError, JobAnalysisResult, MissingApiKeyError
 from app.services.profile_service import ProfileService
@@ -261,3 +267,65 @@ class ResumeService:
 
         finally:
             _ACTIVE_GENERATIONS.discard(user.id)
+
+    async def match_preview(
+        self,
+        user: User,
+        job_description: str,
+    ) -> MatchPreviewResponse:
+        """Calcula a aderência do candidato contra a vaga antes da geração do currículo.
+
+        Args:
+            user: Usuário solicitante.
+            job_description: Texto descritivo da vaga.
+
+        Returns:
+            MatchPreviewResponse com pontuação e matriz de correspondência.
+        """
+        adapter = self._resolve_gemini_adapter(user)
+        job_analysis = await adapter.analyze_job(job_description)
+
+        profile_service = ProfileService(self._db)
+        raw_dossier = await profile_service.get_full_dossier(user.id)
+        dossier: dict[str, Any] = {
+            "skills": [s.name for s in raw_dossier["skills"]],
+            "experiences": [
+                {
+                    "company_name": e.company_name,
+                    "position_title": e.position_title,
+                    "tech_stack": e.tech_stack or [],
+                    "bullet_points": e.achievements or [],
+                }
+                for e in raw_dossier["experiences"]
+            ],
+            "certifications": [c.name for c in raw_dossier["certifications"]],
+        }
+
+        engine = VectorMatchEngine()
+        result = engine.evaluate_match(dossier=dossier, job_analysis=job_analysis)
+
+        return MatchPreviewResponse(
+            match_percentage=result.match_percentage,
+            mandatory_matches=[
+                MatchAnalysisItemSchema(
+                    requirement=m.requirement,
+                    status=m.status,
+                    evidence=m.evidence,
+                    similarity_score=m.similarity_score,
+                )
+                for m in result.mandatory_matches
+            ],
+            desirable_matches=[
+                MatchAnalysisItemSchema(
+                    requirement=m.requirement,
+                    status=m.status,
+                    evidence=m.evidence,
+                    similarity_score=m.similarity_score,
+                )
+                for m in result.desirable_matches
+            ],
+            missing_mandatory=result.missing_mandatory,
+            missing_desirable=result.missing_desirable,
+            suggested_keywords=result.suggested_keywords,
+        )
+

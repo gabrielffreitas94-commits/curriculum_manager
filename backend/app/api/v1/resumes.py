@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.deps import get_current_user, get_document_service
 from app.api.v1.schemas.resume import (
     JobAnalyzeRequest,
+    MatchPreviewRequest,
+    MatchPreviewResponse,
     ResumeGenerateRequest,
     ResumeGenerateResponse,
 )
@@ -42,6 +44,23 @@ async def analyze_job(
     service: ResumeService = Depends(get_resume_service),
 ) -> Any:
     return await service.analyze_job(
+        user=current_user, job_description=body.job_description
+    )
+
+
+@router.post(
+    "/match-preview",
+    response_model=MatchPreviewResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Avalia fit e aderência semântica contra a vaga",
+    description="Calcula a pontuação de match e sugere palavras-chave antes de gerar o currículo.",
+)
+async def match_preview(
+    body: MatchPreviewRequest,
+    current_user: User = Depends(get_current_user),
+    service: ResumeService = Depends(get_resume_service),
+) -> Any:
+    return await service.match_preview(
         user=current_user, job_description=body.job_description
     )
 

@@ -59,3 +59,30 @@ class ResumeGenerateResponse(BaseModel):
     match_percentage: float
     match_analysis: dict[str, Any]
     structured_content: dict[str, Any]
+
+
+class MatchPreviewRequest(BaseModel):
+    """Payload para pré-visualização de match contra anúncio de vaga."""
+
+    job_description: str = Field(..., min_length=20, max_length=50000)
+
+
+class MatchAnalysisItemSchema(BaseModel):
+    """Item individual da matriz de aderência de requisitos."""
+
+    requirement: str
+    status: str
+    evidence: str
+    similarity_score: float = 0.0
+
+
+class MatchPreviewResponse(BaseModel):
+    """Resposta da pré-visualização rápida de aderência e fit do candidato."""
+
+    match_percentage: float
+    mandatory_matches: list[MatchAnalysisItemSchema] = Field(default_factory=list)
+    desirable_matches: list[MatchAnalysisItemSchema] = Field(default_factory=list)
+    missing_mandatory: list[str] = Field(default_factory=list)
+    missing_desirable: list[str] = Field(default_factory=list)
+    suggested_keywords: list[str] = Field(default_factory=list)
+
