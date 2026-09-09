@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.applications import router as applications_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
 from app.api.v1.profile import router as profile_router
@@ -70,6 +71,7 @@ def create_application() -> FastAPI:
     application.include_router(users_router, prefix=settings.API_V1_STR)
     application.include_router(profile_router, prefix=settings.API_V1_STR)
     application.include_router(resumes_router, prefix=settings.API_V1_STR)
+    application.include_router(applications_router, prefix=settings.API_V1_STR)
 
     return application
 
