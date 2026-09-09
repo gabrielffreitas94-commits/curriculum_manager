@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     )
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./thothcvs_dev.db"
-    MASTER_ENCRYPTION_KEY: str = "c2VjcmV0LWtleS1mb3ItZGV2ZWxvcG1lbnQtcHVycG9zZXM="
+    MASTER_ENCRYPTION_KEY: str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     STORAGE_PROVIDER: str = "supabase"
 
     model_config = SettingsConfigDict(
