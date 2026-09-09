@@ -4,6 +4,8 @@ Implementa o isolamento de tenant e a verificação do ID Token do Firebase
 para proteger todas as rotas privadas do ThothCVs AI.
 """
 
+from typing import TYPE_CHECKING
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
@@ -14,6 +16,9 @@ from app.adapters.firebase_auth_adapter import FirebaseAuthAdapter
 from app.core.database import get_db_session
 from app.domain.models import User
 from app.ports.auth_port import AuthError, AuthUser, InvalidTokenError
+
+if TYPE_CHECKING:
+    from app.services.document_service import DocumentService
 
 # Instância do adaptador de autenticação
 auth_adapter = FirebaseAuthAdapter()
@@ -85,3 +90,20 @@ async def get_current_user(
         )
 
     return user
+
+
+async def get_document_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> "DocumentService":
+    """Injeta uma instância ativa de DocumentService com a sessão de banco do request.
+
+    Args:
+        db: Sessão de banco de dados ativa.
+
+    Returns:
+        DocumentService pronto para uso.
+    """
+    from app.services.document_service import DocumentService
+
+    return DocumentService(db=db)
+
