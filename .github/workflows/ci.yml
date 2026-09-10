@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend-ci:
-    name: Backend CI (Python / Ruff / Mypy / Pytest)
+  backend:
+    name: Backend
     runs-on: ubuntu-latest
 
     defaults:
@@ -56,8 +56,8 @@ jobs:
       - name: Run Pytest Test Suite with Coverage
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=60
 
-  frontend-ci:
-    name: Frontend CI (Node.js / ESLint / Next.js Build)
+  frontend:
+    name: Frontend
     runs-on: ubuntu-latest
 
     defaults:
