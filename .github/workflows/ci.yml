@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend
+    name: Backend CI (Python / Ruff / Mypy / Pytest)
     runs-on: ubuntu-latest
 
     defaults:
@@ -57,7 +57,7 @@ jobs:
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=60
 
   frontend:
-    name: Frontend
+    name: Frontend CI (Node.js / ESLint / Next.js Build)
     runs-on: ubuntu-latest
 
     defaults:
