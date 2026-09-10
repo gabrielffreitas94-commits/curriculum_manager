@@ -85,4 +85,3 @@ class MatchPreviewResponse(BaseModel):
     missing_mandatory: list[str] = Field(default_factory=list)
     missing_desirable: list[str] = Field(default_factory=list)
     suggested_keywords: list[str] = Field(default_factory=list)
-

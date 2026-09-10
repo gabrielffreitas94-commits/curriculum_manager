@@ -106,4 +106,3 @@ async def get_document_service(
     from app.services.document_service import DocumentService
 
     return DocumentService(db=db)
-

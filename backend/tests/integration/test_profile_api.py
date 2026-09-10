@@ -435,4 +435,3 @@ async def test_certifications_and_projects_lifecycle(
             headers=headers,
         )
         assert del_p.status_code == 204
-

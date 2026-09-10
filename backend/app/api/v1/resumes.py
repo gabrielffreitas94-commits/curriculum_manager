@@ -43,9 +43,7 @@ async def analyze_job(
     current_user: User = Depends(get_current_user),
     service: ResumeService = Depends(get_resume_service),
 ) -> Any:
-    return await service.analyze_job(
-        user=current_user, job_description=body.job_description
-    )
+    return await service.analyze_job(user=current_user, job_description=body.job_description)
 
 
 @router.post(
@@ -60,9 +58,7 @@ async def match_preview(
     current_user: User = Depends(get_current_user),
     service: ResumeService = Depends(get_resume_service),
 ) -> Any:
-    return await service.match_preview(
-        user=current_user, job_description=body.job_description
-    )
+    return await service.match_preview(user=current_user, job_description=body.job_description)
 
 
 @router.post(
@@ -109,9 +105,7 @@ async def export_resume_pdf(
     Returns:
         Response HTTP contendo o fluxo binário de bytes do PDF e headers para download.
     """
-    pdf_bytes, filename = await service.export_pdf(
-        resume_id=resume_id, user=current_user
-    )
+    pdf_bytes, filename = await service.export_pdf(resume_id=resume_id, user=current_user)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -147,15 +141,10 @@ async def export_resume_docx(
     Returns:
         Response HTTP contendo o binário DOCX e headers de anexo para download.
     """
-    docx_bytes, filename = await service.export_docx(
-        resume_id=resume_id, user=current_user
-    )
-    media_type = (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+    docx_bytes, filename = await service.export_docx(resume_id=resume_id, user=current_user)
+    media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return Response(
         content=docx_bytes,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-

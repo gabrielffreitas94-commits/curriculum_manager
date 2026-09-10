@@ -91,8 +91,7 @@ async def sync_user(
             user.settings = settings
 
     has_key = bool(
-        user.settings.encrypted_gemini_api_key
-        and user.settings.encrypted_gemini_api_key.strip()
+        user.settings.encrypted_gemini_api_key and user.settings.encrypted_gemini_api_key.strip()
     )
 
     settings_resp = UserSettingsResponse(

@@ -36,15 +36,9 @@ async def get_my_settings(
     return UserSettingsResponse(
         preferred_language=settings.preferred_language if settings else "pt-BR",
         has_gemini_key=has_key,
-        email_notifications_enabled=(
-            settings.email_notifications_enabled if settings else True
-        ),
-        in_app_notifications_enabled=(
-            settings.in_app_notifications_enabled if settings else True
-        ),
-        default_prompt_skill_id=(
-            settings.default_prompt_skill_id if settings else None
-        ),
+        email_notifications_enabled=(settings.email_notifications_enabled if settings else True),
+        in_app_notifications_enabled=(settings.in_app_notifications_enabled if settings else True),
+        default_prompt_skill_id=(settings.default_prompt_skill_id if settings else None),
     )
 
 
@@ -80,9 +74,7 @@ async def update_my_settings(
     if body.gemini_api_key is not None:
         if body.gemini_api_key.strip():
             # Cifra a chave antes de persistir no banco relacional
-            settings.encrypted_gemini_api_key = crypto_service.encrypt(
-                body.gemini_api_key.strip()
-            )
+            settings.encrypted_gemini_api_key = crypto_service.encrypt(body.gemini_api_key.strip())
         else:
             settings.encrypted_gemini_api_key = None
 

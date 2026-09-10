@@ -129,8 +129,10 @@ async def test_user_settings_get_and_update_with_crypto(
 
         # Verifica no banco que a chave está cifrada (não em texto plano)
         import uuid
+
         user_id = uuid.UUID(sync_res.json()["id"])
         from sqlalchemy import select
+
         db_user = (await db_session.execute(select(User).where(User.id == user_id))).scalar_one()
         assert db_user.settings.encrypted_gemini_api_key is not None
         assert db_user.settings.encrypted_gemini_api_key != raw_api_key

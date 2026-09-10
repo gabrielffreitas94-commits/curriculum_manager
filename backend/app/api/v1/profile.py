@@ -56,9 +56,7 @@ async def create_experience(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> Any:
-    return await service.create_experience(
-        user_id=current_user.id, data=body.model_dump()
-    )
+    return await service.create_experience(user_id=current_user.id, data=body.model_dump())
 
 
 @router.get(
@@ -85,9 +83,7 @@ async def get_experience(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> Any:
-    item = await service.get_experience(
-        user_id=current_user.id, experience_id=experience_id
-    )
+    item = await service.get_experience(user_id=current_user.id, experience_id=experience_id)
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -131,9 +127,7 @@ async def delete_experience(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> None:
-    deleted = await service.delete_experience(
-        user_id=current_user.id, experience_id=experience_id
-    )
+    deleted = await service.delete_experience(user_id=current_user.id, experience_id=experience_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -153,9 +147,7 @@ async def create_education(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> Any:
-    return await service.create_education(
-        user_id=current_user.id, data=body.model_dump()
-    )
+    return await service.create_education(user_id=current_user.id, data=body.model_dump())
 
 
 @router.get(
@@ -206,9 +198,7 @@ async def delete_education(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> None:
-    deleted = await service.delete_education(
-        user_id=current_user.id, education_id=education_id
-    )
+    deleted = await service.delete_education(user_id=current_user.id, education_id=education_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -228,9 +218,7 @@ async def create_certification(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> Any:
-    return await service.create_certification(
-        user_id=current_user.id, data=body.model_dump()
-    )
+    return await service.create_certification(user_id=current_user.id, data=body.model_dump())
 
 
 @router.get(
@@ -303,9 +291,7 @@ async def create_project(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> Any:
-    return await service.create_project(
-        user_id=current_user.id, data=body.model_dump()
-    )
+    return await service.create_project(user_id=current_user.id, data=body.model_dump())
 
 
 @router.get(
@@ -356,9 +342,7 @@ async def delete_project(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> None:
-    deleted = await service.delete_project(
-        user_id=current_user.id, project_id=project_id
-    )
+    deleted = await service.delete_project(user_id=current_user.id, project_id=project_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -450,9 +434,7 @@ async def create_language(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> Any:
-    return await service.create_language(
-        user_id=current_user.id, data=body.model_dump()
-    )
+    return await service.create_language(user_id=current_user.id, data=body.model_dump())
 
 
 @router.get(
@@ -503,9 +485,7 @@ async def delete_language(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> None:
-    deleted = await service.delete_language(
-        user_id=current_user.id, language_id=language_id
-    )
+    deleted = await service.delete_language(user_id=current_user.id, language_id=language_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

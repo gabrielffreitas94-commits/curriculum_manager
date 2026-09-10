@@ -37,9 +37,7 @@ async def list_notifications(
     current_user: User = Depends(get_current_user),
     service: NotificationService = Depends(get_notification_service),
 ) -> Any:
-    return await service.list_notifications(
-        user=current_user, unread_only=unread_only
-    )
+    return await service.list_notifications(user=current_user, unread_only=unread_only)
 
 
 @router.get(
@@ -65,9 +63,7 @@ async def mark_as_read(
     current_user: User = Depends(get_current_user),
     service: NotificationService = Depends(get_notification_service),
 ) -> Any:
-    return await service.mark_as_read(
-        user=current_user, notification_id=notification_id
-    )
+    return await service.mark_as_read(user=current_user, notification_id=notification_id)
 
 
 @router.post(

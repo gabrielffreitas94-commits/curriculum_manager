@@ -106,9 +106,7 @@ async def update_application(
     current_user: User = Depends(get_current_user),
     service: ApplicationService = Depends(get_application_service),
 ) -> Any:
-    return await service.update_application(
-        user=current_user, app_id=app_id, payload=body
-    )
+    return await service.update_application(user=current_user, app_id=app_id, payload=body)
 
 
 @router.delete(

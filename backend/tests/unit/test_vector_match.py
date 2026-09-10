@@ -44,8 +44,7 @@ def test_perfect_match_score(sample_dossier: dict) -> None:
     assert len(result.missing_mandatory) == 0
     assert len(result.missing_desirable) == 0
     assert any(
-        m.requirement == "Python" and m.status == "matched"
-        for m in result.mandatory_matches
+        m.requirement == "Python" and m.status == "matched" for m in result.mandatory_matches
     )
 
 

@@ -37,9 +37,7 @@ class ProfileService:
         self._db = db
 
     # ==================== EXPERIÊNCIAS ====================
-    async def create_experience(
-        self, user_id: uuid.UUID, data: dict[str, Any]
-    ) -> Experience:
+    async def create_experience(self, user_id: uuid.UUID, data: dict[str, Any]) -> Experience:
         """Cadastra uma nova experiência profissional garantindo vínculo ao tenant.
 
         Args:
@@ -115,9 +113,7 @@ class ProfileService:
         await self._db.flush()
         return experience
 
-    async def delete_experience(
-        self, user_id: uuid.UUID, experience_id: uuid.UUID
-    ) -> bool:
+    async def delete_experience(self, user_id: uuid.UUID, experience_id: uuid.UUID) -> bool:
         """Realiza exclusão lógica (soft delete) da experiência.
 
         Args:
@@ -136,9 +132,7 @@ class ProfileService:
         return True
 
     # ==================== FORMAÇÃO ACADÊMICA ====================
-    async def create_education(
-        self, user_id: uuid.UUID, data: dict[str, Any]
-    ) -> Education:
+    async def create_education(self, user_id: uuid.UUID, data: dict[str, Any]) -> Education:
         """Cadastra uma nova formação acadêmica vinculada ao usuário."""
         education = Education(user_id=user_id, **data)
         self._db.add(education)
@@ -154,9 +148,7 @@ class ProfileService:
         )
         return list(result.scalars().all())
 
-    async def get_education(
-        self, user_id: uuid.UUID, education_id: uuid.UUID
-    ) -> Education | None:
+    async def get_education(self, user_id: uuid.UUID, education_id: uuid.UUID) -> Education | None:
         """Recupera formação acadêmica por ID respeitando isolamento de tenant."""
         result = await self._db.execute(
             select(Education).where(
@@ -180,9 +172,7 @@ class ProfileService:
         await self._db.flush()
         return education
 
-    async def delete_education(
-        self, user_id: uuid.UUID, education_id: uuid.UUID
-    ) -> bool:
+    async def delete_education(self, user_id: uuid.UUID, education_id: uuid.UUID) -> bool:
         """Aplica soft delete na formação acadêmica."""
         education = await self.get_education(user_id, education_id)
         if not education:
@@ -192,9 +182,7 @@ class ProfileService:
         return True
 
     # ==================== CERTIFICAÇÕES ====================
-    async def create_certification(
-        self, user_id: uuid.UUID, data: dict[str, Any]
-    ) -> Certification:
+    async def create_certification(self, user_id: uuid.UUID, data: dict[str, Any]) -> Certification:
         """Cadastra uma nova certificação técnica."""
         certification = Certification(user_id=user_id, **data)
         self._db.add(certification)
@@ -236,9 +224,7 @@ class ProfileService:
         await self._db.flush()
         return certification
 
-    async def delete_certification(
-        self, user_id: uuid.UUID, certification_id: uuid.UUID
-    ) -> bool:
+    async def delete_certification(self, user_id: uuid.UUID, certification_id: uuid.UUID) -> bool:
         """Aplica soft delete na certificação."""
         certification = await self.get_certification(user_id, certification_id)
         if not certification:
@@ -248,9 +234,7 @@ class ProfileService:
         return True
 
     # ==================== PROJETOS ====================
-    async def create_project(
-        self, user_id: uuid.UUID, data: dict[str, Any]
-    ) -> Project:
+    async def create_project(self, user_id: uuid.UUID, data: dict[str, Any]) -> Project:
         """Cadastra um novo projeto ou portfólio."""
         project = Project(user_id=user_id, **data)
         self._db.add(project)
@@ -266,9 +250,7 @@ class ProfileService:
         )
         return list(result.scalars().all())
 
-    async def get_project(
-        self, user_id: uuid.UUID, project_id: uuid.UUID
-    ) -> Project | None:
+    async def get_project(self, user_id: uuid.UUID, project_id: uuid.UUID) -> Project | None:
         """Recupera projeto por ID do tenant."""
         result = await self._db.execute(
             select(Project).where(
@@ -292,9 +274,7 @@ class ProfileService:
         await self._db.flush()
         return project
 
-    async def delete_project(
-        self, user_id: uuid.UUID, project_id: uuid.UUID
-    ) -> bool:
+    async def delete_project(self, user_id: uuid.UUID, project_id: uuid.UUID) -> bool:
         """Aplica soft delete no projeto."""
         project = await self.get_project(user_id, project_id)
         if not project:
@@ -304,18 +284,14 @@ class ProfileService:
         return True
 
     # ==================== COMPETÊNCIAS (SKILLS) ====================
-    async def create_skill(
-        self, user_id: uuid.UUID, data: dict[str, Any]
-    ) -> Skill:
+    async def create_skill(self, user_id: uuid.UUID, data: dict[str, Any]) -> Skill:
         """Cadastra uma nova competência técnica ou comportamental."""
         skill = Skill(user_id=user_id, **data)
         self._db.add(skill)
         await self._db.flush()
         return skill
 
-    async def list_skills(
-        self, user_id: uuid.UUID, category: str | None = None
-    ) -> list[Skill]:
+    async def list_skills(self, user_id: uuid.UUID, category: str | None = None) -> list[Skill]:
         """Lista competências do usuário com filtro opcional por categoria."""
         query = select(Skill).where(Skill.user_id == user_id)
         if category:
@@ -324,9 +300,7 @@ class ProfileService:
         result = await self._db.execute(query)
         return list(result.scalars().all())
 
-    async def get_skill(
-        self, user_id: uuid.UUID, skill_id: uuid.UUID
-    ) -> Skill | None:
+    async def get_skill(self, user_id: uuid.UUID, skill_id: uuid.UUID) -> Skill | None:
         """Recupera competência por ID do tenant."""
         result = await self._db.execute(
             select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id)
@@ -346,9 +320,7 @@ class ProfileService:
         await self._db.flush()
         return skill
 
-    async def delete_skill(
-        self, user_id: uuid.UUID, skill_id: uuid.UUID
-    ) -> bool:
+    async def delete_skill(self, user_id: uuid.UUID, skill_id: uuid.UUID) -> bool:
         """Remove competência do usuário."""
         skill = await self.get_skill(user_id, skill_id)
         if not skill:
@@ -358,9 +330,7 @@ class ProfileService:
         return True
 
     # ==================== IDIOMAS ====================
-    async def create_language(
-        self, user_id: uuid.UUID, data: dict[str, Any]
-    ) -> Language:
+    async def create_language(self, user_id: uuid.UUID, data: dict[str, Any]) -> Language:
         """Cadastra idioma dominado pelo usuário."""
         language = Language(user_id=user_id, **data)
         self._db.add(language)
@@ -376,9 +346,7 @@ class ProfileService:
         )
         return list(result.scalars().all())
 
-    async def get_language(
-        self, user_id: uuid.UUID, language_id: uuid.UUID
-    ) -> Language | None:
+    async def get_language(self, user_id: uuid.UUID, language_id: uuid.UUID) -> Language | None:
         """Recupera idioma por ID do tenant."""
         result = await self._db.execute(
             select(Language).where(Language.id == language_id, Language.user_id == user_id)
@@ -398,9 +366,7 @@ class ProfileService:
         await self._db.flush()
         return language
 
-    async def delete_language(
-        self, user_id: uuid.UUID, language_id: uuid.UUID
-    ) -> bool:
+    async def delete_language(self, user_id: uuid.UUID, language_id: uuid.UUID) -> bool:
         """Remove idioma do usuário."""
         language = await self.get_language(user_id, language_id)
         if not language:

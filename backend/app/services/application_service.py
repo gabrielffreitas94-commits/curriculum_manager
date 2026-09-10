@@ -576,9 +576,7 @@ class ApplicationService:
             if app.status == "offer":
                 offer_candidates += 1
 
-        interview_rate = (
-            round((interview_candidates / total) * 100.0, 2) if total > 0 else 0.0
-        )
+        interview_rate = round((interview_candidates / total) * 100.0, 2) if total > 0 else 0.0
         offer_rate = (
             round((offer_candidates / interview_candidates) * 100.0, 2)
             if interview_candidates > 0

@@ -63,12 +63,9 @@ class NotificationService:
         Returns:
             Número inteiro de notificações pendentes.
         """
-        stmt = (
-            select(func.count(Notification.id))
-            .where(
-                Notification.user_id == user.id,
-                Notification.is_read.is_(False),
-            )
+        stmt = select(func.count(Notification.id)).where(
+            Notification.user_id == user.id,
+            Notification.is_read.is_(False),
         )
         result = await self.db.execute(stmt)
         return int(result.scalar() or 0)
@@ -145,15 +142,12 @@ class NotificationService:
             Quantidade de novas notificações criadas.
         """
         threshold = datetime.now(UTC) - timedelta(days=FOLLOW_UP_INTERVAL_DAYS)
-        stmt = (
-            select(Application)
-            .where(
-                Application.user_id == user.id,
-                Application.deleted_at.is_(None),
-                Application.reminder_active.is_(True),
-                Application.status.not_in(["rejected", "offer", "withdrawn"]),
-                Application.last_activity_at <= threshold,
-            )
+        stmt = select(Application).where(
+            Application.user_id == user.id,
+            Application.deleted_at.is_(None),
+            Application.reminder_active.is_(True),
+            Application.status.not_in(["rejected", "offer", "withdrawn"]),
+            Application.last_activity_at <= threshold,
         )
         result = await self.db.execute(stmt)
         stale_apps = result.scalars().all()

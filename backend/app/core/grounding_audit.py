@@ -74,12 +74,8 @@ class GroundingAuditEngine:
         verified_facts = 0
 
         # Normaliza conjuntos factuais do usuário
-        registered_companies = {
-            c.lower().strip() for c in user_dossier.get("companies", [])
-        }
-        registered_skills = {
-            s.lower().strip() for s in user_dossier.get("skills", [])
-        }
+        registered_companies = {c.lower().strip() for c in user_dossier.get("companies", [])}
+        registered_skills = {s.lower().strip() for s in user_dossier.get("skills", [])}
 
         # 1. Validação de Empresas nas Experiências
         experiences = generated_content.get("selected_experiences", [])
@@ -135,17 +131,11 @@ class GroundingAuditEngine:
         )
 
         # Avaliação de Severidade e Aceitabilidade
-        has_critical = any(
-            i.severity == HallucinationSeverity.CRITICAL for i in issues
-        )
+        has_critical = any(i.severity == HallucinationSeverity.CRITICAL for i in issues)
         max_severity = (
             HallucinationSeverity.CRITICAL
             if has_critical
-            else (
-                HallucinationSeverity.MEDIUM
-                if issues
-                else HallucinationSeverity.LOW
-            )
+            else (HallucinationSeverity.MEDIUM if issues else HallucinationSeverity.LOW)
         )
 
         is_valid = (not has_critical) and (trust_score >= 80.0)
@@ -193,9 +183,7 @@ class GroundingAuditEngine:
             for exp in sanitized["selected_experiences"]:
                 if "tech_stack" in exp:
                     exp["tech_stack"] = [
-                        t
-                        for t in exp["tech_stack"]
-                        if t.lower().strip() not in hallucinated_skills
+                        t for t in exp["tech_stack"] if t.lower().strip() not in hallucinated_skills
                     ]
 
         return sanitized

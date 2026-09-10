@@ -92,13 +92,9 @@ class ResumeService:
         try:
             return await adapter.analyze_job(job_description)
         except MissingApiKeyError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except AIError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     async def generate_resume(
         self,
@@ -122,8 +118,7 @@ class ResumeService:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    "GENERATION_ALREADY_IN_PROGRESS: Uma síntese de currículo "
-                    "já está em execução."
+                    "GENERATION_ALREADY_IN_PROGRESS: Uma síntese de currículo já está em execução."
                 ),
             )
 
@@ -234,9 +229,9 @@ class ResumeService:
                 )
 
             # Determina número da versão sequencial
-            version_stmt = select(
-                func.coalesce(func.max(GeneratedResume.version_number), 0)
-            ).where(GeneratedResume.application_id == application_id)
+            version_stmt = select(func.coalesce(func.max(GeneratedResume.version_number), 0)).where(
+                GeneratedResume.application_id == application_id
+            )
             curr_version = (await self._db.execute(version_stmt)).scalar() or 0
             next_version = curr_version + 1
 
@@ -249,9 +244,7 @@ class ResumeService:
                 version_number=next_version,
                 structured_content=sanitized_content,
                 match_analysis=sanitized_content.get("match_analysis", {}),
-                match_percentage=sanitized_content.get(
-                    "match_percentage", audit.trust_score
-                ),
+                match_percentage=sanitized_content.get("match_percentage", audit.trust_score),
             )
             self._db.add(resume)
             await self._db.flush()
@@ -328,4 +321,3 @@ class ResumeService:
             missing_desirable=result.missing_desirable,
             suggested_keywords=result.suggested_keywords,
         )
-
