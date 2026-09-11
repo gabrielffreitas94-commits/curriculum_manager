@@ -138,6 +138,67 @@ describe("JobAnalyzerModal Component", () => {
     });
   });
 
+  it("should update language and work model select inputs", () => {
+    render(<JobAnalyzerModal {...defaultProps} />);
+    const langSelect = screen.getByLabelText(/idioma do currículo/i);
+    fireEvent.change(langSelect, { target: { value: "en-US" } });
+    expect(langSelect).toHaveValue("en-US");
+
+    const workSelect = screen.getByLabelText(/modelo de trabalho/i);
+    fireEvent.change(workSelect, { target: { value: "hybrid" } });
+    expect(workSelect).toHaveValue("hybrid");
+  });
+
+  it("should display error if generateResume fails or description is empty", async () => {
+    render(<JobAnalyzerModal {...defaultProps} />);
+
+    // Com descrição vazia
+    const genBtn = screen.getByRole("button", { name: /sintetizar com ia & salvar/i });
+    fireEvent.click(genBtn);
+    expect(screen.getByRole("alert")).toHaveTextContent("Por favor, informe a descrição completa da vaga.");
+
+    // Com falha na API
+    vi.spyOn(ApiClient, "generateResume").mockRejectedValueOnce(new Error("Erro de alucinação 422."));
+    fireEvent.change(screen.getByLabelText(/descrição completa da vaga/i), {
+      target: { value: "Descrição de vaga preenchida." },
+    });
+    fireEvent.click(genBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Erro de alucinação 422.");
+    });
+  });
+
+  it("should handle focus trap with Tab, Shift+Tab and close on Escape", () => {
+    const onClose = vi.fn();
+    render(<JobAnalyzerModal {...defaultProps} onClose={onClose} />);
+
+    // Pressiona Escape
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+
+    // Simula primeiro elemento focado e Shift+Tab
+    const modal = screen.getByRole("dialog");
+    const focusables = modal.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstElement = focusables[0];
+    const lastElement = focusables[focusables.length - 1];
+
+    firstElement.focus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+
+    lastElement.focus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: false });
+  });
+
+  it("should display error if handleMatchPreview is triggered with empty description", () => {
+    render(<JobAnalyzerModal {...defaultProps} />);
+    const form = screen.getByLabelText(/descrição completa da vaga/i).closest("form")!;
+    fireEvent.submit(form);
+    expect(screen.getByRole("alert")).toHaveTextContent("Por favor, informe a descrição completa da vaga.");
+  });
+
   it("should call onClose when clicking cancel or close icon button", () => {
     const onClose = vi.fn();
     render(<JobAnalyzerModal {...defaultProps} onClose={onClose} />);
@@ -147,5 +208,28 @@ describe("JobAnalyzerModal Component", () => {
 
     fireEvent.click(screen.getByLabelText(/fechar janela modal/i));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("should display default error messages when errors have empty message", async () => {
+    vi.spyOn(ApiClient, "previewMatch").mockRejectedValueOnce(new Error(""));
+
+    render(<JobAnalyzerModal {...defaultProps} />);
+
+    fireEvent.change(screen.getByLabelText(/descrição completa da vaga/i), {
+      target: { value: "Descrição de teste para erro vazio." },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /ver aderência rápida/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Erro ao analisar vaga.");
+    });
+
+    vi.spyOn(ApiClient, "generateResume").mockRejectedValueOnce(new Error(""));
+    fireEvent.click(screen.getByRole("button", { name: /sintetizar com ia & salvar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Erro ao sintetizar currículo via IA.");
+    });
   });
 });

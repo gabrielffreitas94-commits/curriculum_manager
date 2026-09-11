@@ -89,7 +89,16 @@ async def test_experiences_crud_and_soft_delete(
         assert len(items) == 1
         assert items[0]["id"] == exp_id
 
+        # 2.1 Get Single Experience by ID
+        get_exp_res = await async_client.get(
+            f"/api/v1/profile/experiences/{exp_id}",
+            headers=headers_a,
+        )
+        assert get_exp_res.status_code == 200
+        assert get_exp_res.json()["id"] == exp_id
+
         # 3. Update Experience
+
         update_res = await async_client.put(
             f"/api/v1/profile/experiences/{exp_id}",
             headers=headers_a,
@@ -249,6 +258,23 @@ async def test_full_dossier_aggregation(
         assert len(dossier["skills"]) == 1
         assert len(dossier["languages"]) == 1
         assert dossier["skills"][0]["name"] == "SQLAlchemy"
+
+        # Chamadas diretas para os endpoints de listagem de cada coleção
+        list_edu = await async_client.get("/api/v1/profile/educations", headers=headers_a)
+        assert list_edu.status_code == 200
+        assert len(list_edu.json()) == 1
+
+        list_cert = await async_client.get("/api/v1/profile/certifications", headers=headers_a)
+        assert list_cert.status_code == 200
+        assert len(list_cert.json()) == 1
+
+        list_proj = await async_client.get("/api/v1/profile/projects", headers=headers_a)
+        assert list_proj.status_code == 200
+        assert len(list_proj.json()) == 1
+
+        list_lang = await async_client.get("/api/v1/profile/languages", headers=headers_a)
+        assert list_lang.status_code == 200
+        assert len(list_lang.json()) == 1
 
 
 @pytest.mark.asyncio
@@ -451,7 +477,7 @@ async def test_profile_entities_not_found_return_404(
     fake_id = uuid.uuid4()
 
     with patch("app.api.v1.deps.auth_adapter.verify_token", return_value=USER_A_AUTH):
-        # GET 404 na experiência (única entidade com rota GET /{id} individual)
+        # GET 404 na experiência (entidade com rota GET /{id} individual)
         res_get_exp = await async_client.get(
             f"/api/v1/profile/experiences/{fake_id}", headers=headers
         )

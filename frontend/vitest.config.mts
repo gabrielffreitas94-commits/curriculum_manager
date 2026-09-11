@@ -8,6 +8,17 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json", "html"],
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        "src/test/**",
+        "src/types/**",
+        "**/*.d.ts",
+        "src/app/layout.tsx",
+      ],
+    },
   },
   resolve: {
     alias: {

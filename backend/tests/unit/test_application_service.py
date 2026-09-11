@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas.application import (
@@ -162,6 +163,33 @@ async def test_application_service_not_found_errors(
         await service.delete_application(user=test_user, app_id=random_id)
     assert exc_delete.value.status_code == 404
 
+    with pytest.raises(HTTPException) as exc_stage:
+        await service.add_stage(
+            user=test_user, app_id=random_id, payload=ApplicationStageCreate(stage_name="RH")
+        )
+    assert exc_stage.value.status_code == 404
+
+    with pytest.raises(HTTPException) as exc_update_stage:
+        await service.update_stage(
+            user=test_user,
+            app_id=random_id,
+            stage_id=uuid.uuid4(),
+            payload=ApplicationStageUpdate(status="completed"),
+        )
+    assert exc_update_stage.value.status_code == 404
+
+    with pytest.raises(HTTPException) as exc_contact:
+        await service.add_contact(
+            user=test_user, app_id=random_id, payload=ApplicationContactCreate(name="Recruiter")
+        )
+    assert exc_contact.value.status_code == 404
+
+    with pytest.raises(HTTPException) as exc_note:
+        await service.add_note(
+            user=test_user, app_id=random_id, payload=ApplicationNoteCreate(content="Nota")
+        )
+    assert exc_note.value.status_code == 404
+
 
 @pytest.mark.asyncio
 async def test_stages_contacts_and_notes_service(
@@ -250,15 +278,24 @@ async def test_analytics_metrics_empty_and_populated(
             company_name="C2", job_title="Dev", job_description="d", status="offer"
         ),
     )
-    await service.create_application(
+    app3 = await service.create_application(
         user=test_user,
         payload=ApplicationCreate(
             company_name="C3", job_title="Dev", job_description="d", status="applied"
         ),
     )
+    # Força a candidatura C3 a ser considerada estagnada (>7 dias sem atividade)
+    stmt = (
+        update(Application)
+        .where(Application.id == app3.id)
+        .values(last_activity_at=datetime.now(UTC) - timedelta(days=10))
+    )
+    await db_session.execute(stmt)
+    await db_session.commit()
 
     metrics_populated = await service.get_analytics_metrics(user=test_user)
     assert metrics_populated.total_applications == 3
+    assert metrics_populated.stale_applications_count == 1
     # 2 entrevistadas (interview + offer) de 3 total -> 66.67%
     assert metrics_populated.interview_conversion_rate == 66.67
     # 1 proposta de 2 entrevistadas -> 50.0%

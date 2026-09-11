@@ -167,3 +167,23 @@ def test_match_with_completely_empty_dossier() -> None:
     assert len(result.missing_mandatory) == 2
     assert len(result.missing_desirable) == 1
     assert len(result.suggested_keywords) == 3
+
+
+def test_match_substring_related_skill() -> None:
+    """Valida matching de habilidade relacionada por substring (similarity 0.9)."""
+    engine = VectorMatchEngine()
+    dossier = {
+        "skills": ["Python"],
+        "experiences": [],
+        "certifications": [],
+    }
+    job = JobAnalysisResult(
+        job_title="Software Developer",
+        seniority_level="Pleno",
+        mandatory_requirements=["Python 3.12 Programming"],
+        desirable_requirements=[],
+        keywords=[],
+    )
+    result = engine.evaluate_match(dossier=dossier, job_analysis=job)
+    assert len(result.mandatory_matches) == 1
+    assert result.mandatory_matches[0].similarity_score == 0.9

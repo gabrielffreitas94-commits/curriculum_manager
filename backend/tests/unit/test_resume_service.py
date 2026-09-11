@@ -72,6 +72,20 @@ def test_resolve_gemini_adapter_byok_and_fallbacks(resume_user: User) -> None:
         assert exc.value.status_code == 400
         assert "Chave de API do Gemini não configurada" in exc.value.detail
 
+    # 5. Usuário com settings = None, mas GEMINI_API_KEY no ambiente
+    resume_user.settings = None
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "AIzaSyNoSettingsKey"}):
+        adapter_no_settings = service._resolve_gemini_adapter(user=resume_user)
+        assert adapter_no_settings._api_key == "AIzaSyNoSettingsKey"
+
+    # 6. Usuário com chave cifrada corrompida (cai nos dois excepts e usa env var)
+    resume_user.settings = UserSettings(
+        user_id=resume_user.id, encrypted_gemini_api_key=b"corrupted_binary_data"
+    )
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "AIzaSyFallbackEnvKey"}):
+        adapter_corrupt = service._resolve_gemini_adapter(user=resume_user)
+        assert adapter_corrupt._api_key == "AIzaSyFallbackEnvKey"
+
 
 @pytest.mark.asyncio
 async def test_analyze_job_exceptions(resume_user: User) -> None:
@@ -161,6 +175,79 @@ async def test_generate_resume_hallucination_and_tenant_validation(
     with pytest.raises(HTTPException) as exc_fake_app:
         await service.generate_resume(user=resume_user, payload=req_fake_app)
     assert exc_fake_app.value.status_code == 404
+
+    # 3. Alucinação severa detectada pelo motor anti-alucinação -> 422
+    from app.core.grounding_audit import (
+        AuditResult,
+        HallucinationIssue,
+        HallucinationSeverity,
+    )
+
+    bad_audit = AuditResult(
+        is_valid=False,
+        trust_score=35.0,
+        severity=HallucinationSeverity.CRITICAL,
+        hallucinations=[
+            HallucinationIssue(
+                field="selected_experiences.company_name",
+                hallucinated_value="NASA",
+                description="Empresa inventada",
+                severity=HallucinationSeverity.CRITICAL,
+            )
+        ],
+    )
+    service._audit_engine.audit = MagicMock(return_value=bad_audit)
+    req_valid = ResumeGenerateRequest(
+        job_description="Vaga para Engenheiro de Software Python Sênior com FastAPI e Docker",
+        create_application=True,
+    )
+    with pytest.raises(HTTPException) as exc_422:
+        await service.generate_resume(user=resume_user, payload=req_valid)
+    assert exc_422.value.status_code == 422
+    assert "rejeitada pelo motor anti-alucinação" in exc_422.value.detail
+
+    # 4. Caminho feliz: criação automática de candidatura e snapshot de versão
+    good_audit = AuditResult(
+        is_valid=True,
+        trust_score=95.0,
+        hallucinations=[],
+    )
+    service._audit_engine.audit = MagicMock(return_value=good_audit)
+    service._audit_engine.sanitize = MagicMock(
+        return_value={
+            "header": {"full_name": "Test"},
+            "match_percentage": 95.0,
+            "match_analysis": {},
+        }
+    )
+    mock_dossier = {
+        "experiences": [
+            MagicMock(
+                company_name="Acme Corp",
+                position_title="Senior Python Engineer",
+                tech_stack=["Python", "FastAPI"],
+            )
+        ],
+        "skills": [MagicMock(name="Python")],
+        "projects": [
+            MagicMock(
+                name="Thoth CVs",
+                technologies=["FastAPI", "Docker"],
+            )
+        ],
+        "educations": [MagicMock(institution_name="USP", degree="BSc")],
+        "certifications": [MagicMock(name="AWS Certified Developer")],
+        "languages": [MagicMock(language_name="Inglês", proficiency_level="Fluente")],
+    }
+    with patch(
+        "app.services.resume_service.ProfileService.get_full_dossier",
+        AsyncMock(return_value=mock_dossier),
+    ):
+        res = await service.generate_resume(user=resume_user, payload=req_valid)
+    assert res.resume_id is not None
+    assert res.application_id is not None
+    assert res.version_number == 1
+    assert res.match_percentage == 95.0
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ from app.core.grounding_audit import (
     AuditResult,
     GroundingAuditEngine,
     HallucinationSeverity,
+    ValidationTier,
 )
 
 
@@ -271,3 +272,24 @@ def test_audit_vector_evaluator_callable_and_zero_norms(sample_user_dossier: dic
     )
     assert result.is_valid is True
     assert result.verified_counts_by_tier.get("vector", 0) >= 1
+
+
+def test_audit_subword_vector_fallback() -> None:
+    """Valida o tier vetorial por n-gramas e fallback de similaridade subpalavra."""
+    engine = GroundingAuditEngine()
+    # Com fuzzy_threshold=0.95 e vector_threshold=0.70, "Postgres" vs "PostgreSQL"
+    # (sim ~0.72) ativa o fallback vetorial subpalavra
+    tier = engine.validate_term(
+        term="Postgres",
+        registered_terms={"PostgreSQL"},
+        fuzzy_threshold=0.95,
+        vector_threshold=0.70,
+    )
+    assert tier == ValidationTier.VECTOR
+
+    # Valida diretamente o cálculo de similaridade por n-gramas subpalavra
+    sim = engine._subword_vector_similarity("Postgres", "PostgreSQL")
+    assert sim >= 0.70
+
+    # Valida caso de borda com vetores vazios
+    assert engine._subword_vector_similarity("", "") == 0.0

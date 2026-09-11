@@ -114,4 +114,15 @@ describe("NotificationDrawer Component", () => {
     expect(screen.getByText("Varrendo Vagas...")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /disparar varredura/i })).toBeDisabled();
   });
+
+  it("should close drawer on Escape key and ignore other keys", () => {
+    const onClose = vi.fn();
+    render(<NotificationDrawer {...defaultProps} onClose={onClose} />);
+
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

@@ -27,6 +27,16 @@ describe("KanbanBoard Component", () => {
       last_activity_date: "2026-09-08T00:00:00Z",
       created_at: "2026-09-08T00:00:00Z",
     },
+    {
+      id: "app-3",
+      company_name: "Startup Beta",
+      job_title: "Fullstack Developer",
+      status: "rejected",
+      work_model: "onsite",
+      needs_follow_up: false,
+      last_activity_date: "2026-09-05T00:00:00Z",
+      created_at: "2026-09-05T00:00:00Z",
+    },
   ];
 
   const defaultProps = {
@@ -53,6 +63,7 @@ describe("KanbanBoard Component", () => {
     expect(screen.getByText("Google Cloud")).toBeInTheDocument();
     expect(screen.getByText("remote")).toBeInTheDocument();
     expect(screen.getByText("São Paulo, Brasil")).toBeInTheDocument();
+    expect(screen.getByText("Startup Beta")).toBeInTheDocument();
   });
 
   it("should show follow-up alert banner when needs_follow_up is true", () => {
@@ -80,10 +91,21 @@ describe("KanbanBoard Component", () => {
     expect(onStatusChange).toHaveBeenCalledWith("app-1", "screening");
   });
 
+  it("should move application backward to previous status when clicking prev button", () => {
+    const onStatusChange = vi.fn().mockResolvedValue(undefined);
+    render(<KanbanBoard {...defaultProps} onStatusChange={onStatusChange} />);
+
+    // On "screening" status (app-2), prev is "applied"
+    const prevBtn = screen.getByLabelText(/mover DevOps Engineer.*para etapa anterior/i);
+    fireEvent.click(prevBtn);
+
+    expect(onStatusChange).toHaveBeenCalledWith("app-2", "applied");
+  });
+
   it("should display empty state placeholder for columns with 0 applications", () => {
     render(<KanbanBoard {...defaultProps} />);
 
     const emptyPlaceholders = screen.getAllByText("Nenhuma vaga nesta etapa");
-    expect(emptyPlaceholders.length).toBe(3); // interview, offer, rejected
+    expect(emptyPlaceholders.length).toBe(2); // interview, offer
   });
 });

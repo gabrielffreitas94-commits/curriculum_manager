@@ -5,6 +5,7 @@ prefixos de mock de desenvolvimento e validações de claims do usuário.
 """
 
 import time
+from unittest.mock import patch
 
 import jwt
 import pytest
@@ -145,3 +146,14 @@ async def test_verify_token_missing_email_raises_auth_error() -> None:
 
     with pytest.raises(AuthError, match="Token não contém o e-mail"):
         await adapter.verify_token(token_without_email)
+
+
+@pytest.mark.asyncio
+async def test_verify_token_missing_alg_header() -> None:
+    """Garante que um JWT com header sem 'alg' levante InvalidTokenError."""
+    adapter = FirebaseAuthAdapter()
+    with (
+        patch("jwt.get_unverified_header", return_value={}),
+        pytest.raises(InvalidTokenError, match="Token JWT com cabeçalho de algoritmo ausente"),
+    ):
+        await adapter.verify_token("some.valid.jwt")

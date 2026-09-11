@@ -143,3 +143,13 @@ async def test_update_settings_without_existing_record(
         assert put_res.status_code == 200
         assert put_res.json()["preferred_language"] == "es-ES"
         assert put_res.json()["in_app_notifications_enabled"] is False
+
+        # Atualiza default_prompt_skill_id
+        skill_id = uuid.uuid4()
+        skill_res = await async_client.put(
+            "/api/v1/users/me/settings",
+            headers=headers,
+            json={"default_prompt_skill_id": str(skill_id)},
+        )
+        assert skill_res.status_code == 200
+        assert skill_res.json()["default_prompt_skill_id"] == str(skill_id)

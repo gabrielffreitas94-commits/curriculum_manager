@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 import app.domain.models  # noqa: F401
+import app.ports.document_port  # noqa: F401
 from app.core.database import get_db_session
 from app.domain.base import Base
 from app.main import app

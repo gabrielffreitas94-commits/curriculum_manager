@@ -72,4 +72,22 @@ describe("AnalyticsDashboard Component", () => {
     expect(screen.getByText("Atualizando...")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /atualizar dados analíticos/i })).toBeDisabled();
   });
+
+  it("should render distribution safely when total_applications is 0 and custom status key", () => {
+    const zeroMetrics: ApplicationAnalyticsMetrics = {
+      total_applications: 0,
+      interview_conversion_rate: 0,
+      offer_conversion_rate: 0,
+      response_rate: 0,
+      stale_applications_count: 0,
+      average_match_score: 0,
+      status_distribution: {
+        custom_stage: 0,
+      },
+    };
+
+    render(<AnalyticsDashboard {...defaultProps} metrics={zeroMetrics} />);
+    expect(screen.getByText("custom_stage")).toBeInTheDocument();
+    expect(screen.getByText("0 (0%)")).toBeInTheDocument();
+  });
 });

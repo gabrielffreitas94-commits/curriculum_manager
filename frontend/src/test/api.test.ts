@@ -362,5 +362,16 @@ describe("ApiClient", () => {
       const failCreated = await ApiClient.triggerFollowUpScan();
       expect(failCreated).toBe(0);
     });
+
+    it("should return 0 when payload numbers are undefined", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+      });
+
+      expect(await ApiClient.getUnreadCount()).toBe(0);
+      expect(await ApiClient.markAllAsRead()).toBe(0);
+      expect(await ApiClient.triggerFollowUpScan()).toBe(0);
+    });
   });
 });

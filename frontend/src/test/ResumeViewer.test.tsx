@@ -136,4 +136,28 @@ describe("ResumeViewer Component", () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("should render experience with fallback date when not current and end_date is null", () => {
+    const resumeWithPastExp: ResumeGenerateResponse = {
+      ...mockResume,
+      structured_content: {
+        ...mockResume.structured_content,
+        selected_experiences: [
+          {
+            company_name: "Legacy Corp",
+            position_title: "Junior Dev",
+            start_date: "2018-01-01",
+            end_date: null,
+            is_current: false,
+            bullet_points: [],
+            tech_stack: [],
+            sort_order: 0,
+          },
+        ],
+      },
+    };
+
+    render(<ResumeViewer {...defaultProps} resume={resumeWithPastExp} />);
+    expect(screen.getByText(/2018-01-01 – Atual/i)).toBeInTheDocument();
+  });
 });
