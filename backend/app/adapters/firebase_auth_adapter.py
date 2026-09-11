@@ -7,6 +7,7 @@ e extrai os claims do perfil do usuário para o contexto da requisição.
 from typing import Any
 
 import jwt
+from jwt import PyJWKClient
 
 from app.core.config import settings
 from app.ports.auth_port import AuthError, AuthPort, AuthUser, InvalidTokenError
@@ -17,15 +18,30 @@ class FirebaseAuthAdapter(AuthPort):
 
     Attributes:
         _firebase_project_id: ID do projeto Firebase para validação de audiência.
+        _jwks_client: Cliente PyJWKClient para recuperação de chaves públicas oficiais do Google.
+        _public_key: Chave pública opcional injetada diretamente (ex: testes sem rede).
     """
 
-    def __init__(self, firebase_project_id: str = "thothcvs-ai") -> None:
-        """Inicializa o adaptador com o identificador do projeto Firebase.
+    GOOGLE_JWKS_URL = (
+        "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+    )
+
+    def __init__(
+        self,
+        firebase_project_id: str = "thothcvs-ai",
+        jwks_client: PyJWKClient | None = None,
+        public_key: Any | None = None,
+    ) -> None:
+        """Inicializa o adaptador com o identificador do projeto Firebase e JWKS.
 
         Args:
             firebase_project_id: Identificador do projeto Firebase Auth no Google Cloud.
+            jwks_client: Cliente JWKS opcional para customização ou mocks.
+            public_key: Chave pública PEM/RSA opcional injetada diretamente para testes.
         """
         self._firebase_project_id = firebase_project_id
+        self._public_key = public_key
+        self._jwks_client = jwks_client or PyJWKClient(self.GOOGLE_JWKS_URL)
 
     def _decode_and_verify(self, token: str) -> dict[str, Any]:
         """Decodifica e valida criptograficamente o JWT recebido.
@@ -48,20 +64,33 @@ class FirebaseAuthAdapter(AuthPort):
             }
 
         try:
-            # Em modo não verificado ou local quando sem chave pública externa
-            # jwt.decode valida formato e expiração
             unverified_headers = jwt.get_unverified_header(token)
             if not unverified_headers.get("alg"):
                 raise InvalidTokenError("Token JWT com cabeçalho de algoritmo ausente.")
 
+            if self._public_key is not None:
+                signing_key = self._public_key
+            else:
+                signing_key_obj = self._jwks_client.get_signing_key_from_jwt(token)
+                signing_key = signing_key_obj.key
+
             claims = jwt.decode(
                 token,
-                options={"verify_signature": False, "verify_exp": True},
+                key=signing_key,
+                algorithms=["RS256"],
+                audience=self._firebase_project_id,
+                issuer=f"https://securetoken.google.com/{self._firebase_project_id}",
+                options={
+                    "verify_signature": True,
+                    "verify_exp": True,
+                    "verify_aud": True,
+                    "verify_iss": True,
+                },
             )
             return claims
         except jwt.ExpiredSignatureError as exc:
             raise InvalidTokenError("O token Firebase informado expirou.") from exc
-        except jwt.PyJWTError as exc:
+        except (jwt.PyJWTError, Exception) as exc:
             raise InvalidTokenError(f"Token Firebase inválido: {exc}") from exc
 
     async def verify_token(self, token: str) -> AuthUser:

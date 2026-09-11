@@ -136,3 +136,107 @@ async def test_user_settings_get_and_update_with_crypto(
         db_user = (await db_session.execute(select(User).where(User.id == user_id))).scalar_one()
         assert db_user.settings.encrypted_gemini_api_key is not None
         assert db_user.settings.encrypted_gemini_api_key != raw_api_key
+
+
+@pytest.mark.asyncio
+async def test_auth_sync_real_rs256_token_integration(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Valida o fluxo ponta a ponta de autenticação HTTP com JWT assinado via RS256."""
+    import time
+
+    import jwt
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from app.api.v1 import deps
+
+    # Gera par RSA legítimo
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem_private = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    pem_public = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    payload = {
+        "sub": "rs256_real_uid_101",
+        "email": "real_rsa@thothcvs.ai",
+        "name": "RSA Verified User",
+        "aud": "thothcvs-ai",
+        "iss": "https://securetoken.google.com/thothcvs-ai",
+        "exp": int(time.time()) + 3600,
+    }
+    valid_token = jwt.encode(payload, pem_private, algorithm="RS256")
+
+    # Injeta a chave pública legítima no adaptador global
+    original_pk = deps.auth_adapter._public_key
+    deps.auth_adapter._public_key = pem_public
+    try:
+        response = await async_client.post(
+            "/api/v1/auth/sync",
+            headers={"Authorization": f"Bearer {valid_token}"},
+            json={"target_title": "Security Engineer"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["firebase_uid"] == "rs256_real_uid_101"
+        assert data["email"] == "real_rsa@thothcvs.ai"
+        assert data["full_name"] == "RSA Verified User"
+    finally:
+        deps.auth_adapter._public_key = original_pk
+
+
+@pytest.mark.asyncio
+async def test_auth_sync_forged_rs256_token_returns_401(
+    async_client: AsyncClient,
+) -> None:
+    """Garante que requisições HTTP com JWT forjado recebam HTTP 401 Unauthorized."""
+    import time
+
+    import jwt
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from app.api.v1 import deps
+
+    # Chave do servidor legítimo
+    server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem_public_server = server_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    # Chave do invasor
+    attacker_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem_private_attacker = attacker_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+    payload = {
+        "sub": "victim_uid_999",
+        "email": "victim@thothcvs.ai",
+        "aud": "thothcvs-ai",
+        "iss": "https://securetoken.google.com/thothcvs-ai",
+        "exp": int(time.time()) + 3600,
+    }
+    forged_token = jwt.encode(payload, pem_private_attacker, algorithm="RS256")
+
+    original_pk = deps.auth_adapter._public_key
+    deps.auth_adapter._public_key = pem_public_server
+    try:
+        response = await async_client.post(
+            "/api/v1/auth/sync",
+            headers={"Authorization": f"Bearer {forged_token}"},
+        )
+        assert response.status_code == 401
+        assert "inválida ou expirada" in response.json()["detail"]
+    finally:
+        deps.auth_adapter._public_key = original_pk
