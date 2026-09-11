@@ -5,6 +5,7 @@ prefixos de mock de desenvolvimento e validações de claims do usuário.
 """
 
 import time
+
 import jwt
 import pytest
 

@@ -111,7 +111,9 @@ def test_date_formatting_types_and_edge_cases() -> None:
 
 
 def test_locale_fallback_and_missing_translations() -> None:
-    """Garante fallback para pt-BR quando o locale não existir e fallback para a chave de tradução."""
+    """Garante fallback para pt-BR quando o locale não existir e fallback
+    para a chave de tradução.
+    """
     # Locale não registrado deve retornar configuração padrão pt-BR
     fallback_config = LocaleRegistry.get("ja-JP")
     assert fallback_config.code == "pt-BR"
@@ -122,5 +124,3 @@ def test_locale_fallback_and_missing_translations() -> None:
         LocaleRegistry.get_translation("pt-BR", "chave_totalmente_inexistente", default="Fallback")
         == "Fallback"
     )
-
-

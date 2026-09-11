@@ -406,4 +406,3 @@ async def test_application_subroutes_not_found(
             json={"content": "Nota", "note_type": "general"},
         )
         assert res_note.status_code == 404
-

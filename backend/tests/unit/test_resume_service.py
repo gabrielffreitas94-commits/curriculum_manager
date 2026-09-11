@@ -1,7 +1,8 @@
 """Testes unitários completos para o ResumeService (Orquestrador central de geração com IA).
 
-Valida resolução de BYOK decifrado, concorrência simultânea, bloqueio de alucinação severa (422),
-criação automática ou vínculo com candidatura existente e avaliação semântica prévia (match preview).
+Valida resolução de BYOK decifrado, concorrência simultânea, bloqueio de alucinação
+severa (422), criação automática ou vínculo com candidatura existente e avaliação
+semântica prévia (match preview).
 """
 
 import os
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas.resume import ResumeGenerateRequest
 from app.core.crypto import crypto_service
-from app.domain.models import Application, PromptSkill, User, UserSettings
+from app.domain.models import User, UserSettings
 from app.ports.ai_port import (
     AIError,
     FullGeneratedResumePayload,
@@ -42,7 +43,9 @@ def test_resolve_gemini_adapter_byok_and_fallbacks(resume_user: User) -> None:
     # 1. Usuário com chave cifrada no banco com AAD (tenant_id)
     aad = str(resume_user.id).encode("utf-8")
     encrypted_key = crypto_service.encrypt("AIzaSyTenantBoundKey123", associated_data=aad)
-    resume_user.settings = UserSettings(user_id=resume_user.id, encrypted_gemini_api_key=encrypted_key)
+    resume_user.settings = UserSettings(
+        user_id=resume_user.id, encrypted_gemini_api_key=encrypted_key
+    )
 
     adapter = service._resolve_gemini_adapter(user=resume_user)
     assert adapter._api_key == "AIzaSyTenantBoundKey123"
@@ -188,4 +191,3 @@ async def test_match_preview_integration(
     assert isinstance(preview.match_percentage, float)
     assert len(preview.mandatory_matches) == 1
     assert len(preview.desirable_matches) == 1
-

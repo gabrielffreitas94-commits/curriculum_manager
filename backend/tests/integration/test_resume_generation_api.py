@@ -298,4 +298,3 @@ async def test_generate_resume_validation_errors(
             },
         )
         assert res_404.status_code == 404
-

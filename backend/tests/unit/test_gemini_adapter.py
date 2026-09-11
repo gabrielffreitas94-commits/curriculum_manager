@@ -20,7 +20,9 @@ from app.ports.ai_port import (
 
 @pytest.mark.asyncio
 async def test_missing_api_key_raises_error() -> None:
-    """Garante que instanciar o adaptador sem API Key levante MissingApiKeyError em qualquer chamada."""
+    """Garante que instanciar o adaptador sem API Key levante
+    MissingApiKeyError em qualquer chamada.
+    """
     adapter_none = GeminiAIAdapter(api_key=None)
     with pytest.raises(MissingApiKeyError, match="Chave de API do Gemini não configurada"):
         await adapter_none.analyze_job("Vaga desc")
@@ -75,7 +77,6 @@ async def test_analyze_job_empty_response_raises_generation_error() -> None:
 
     with pytest.raises(GenerationError, match="Gemini retornou uma resposta vazia"):
         await adapter.analyze_job("Vaga qualquer")
-
 
 
 @pytest.mark.asyncio

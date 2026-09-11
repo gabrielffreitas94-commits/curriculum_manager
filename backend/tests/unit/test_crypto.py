@@ -148,5 +148,3 @@ def test_decrypt_unexpected_exception_raises_decryption_error() -> None:
 
     with pytest.raises(DecryptionError, match="Erro inesperado durante a decifragem"):
         service.decrypt(encrypted)
-
-

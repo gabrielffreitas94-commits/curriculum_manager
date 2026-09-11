@@ -250,7 +250,6 @@ def test_audit_vector_evaluator_callable_and_zero_norms(sample_user_dossier: dic
     # 3. Similaridade subpalavra com string vazia vs string com conteúdo retorna 0.0
     assert engine._subword_vector_similarity("", "python") == 0.0
 
-
     # 4. Avaliador vetorial dinâmico (vector_evaluator callable)
     def custom_evaluator(t1: str, t2: str) -> float:
         if (t1.lower() == "golang" and t2.lower() == "go") or (
@@ -272,5 +271,3 @@ def test_audit_vector_evaluator_callable_and_zero_norms(sample_user_dossier: dic
     )
     assert result.is_valid is True
     assert result.verified_counts_by_tier.get("vector", 0) >= 1
-
-

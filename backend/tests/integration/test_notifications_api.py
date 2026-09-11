@@ -277,4 +277,3 @@ async def test_mark_notification_not_found_raises_404(
             headers=headers_a,
         )
         assert res.status_code == 404
-

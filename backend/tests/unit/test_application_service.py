@@ -212,7 +212,9 @@ async def test_stages_contacts_and_notes_service(
     note = await service.add_note(
         user=test_user,
         app_id=app_item.id,
-        payload=ApplicationNoteCreate(content="Estudar algoritmos de fila", note_type="interview_prep"),
+        payload=ApplicationNoteCreate(
+            content="Estudar algoritmos de fila", note_type="interview_prep"
+        ),
     )
     assert note.content == "Estudar algoritmos de fila"
 
@@ -238,15 +240,21 @@ async def test_analytics_metrics_empty_and_populated(
     # 2. Cadastra candidaturas para aferir conversão
     await service.create_application(
         user=test_user,
-        payload=ApplicationCreate(company_name="C1", job_title="Dev", job_description="d", status="interview"),
+        payload=ApplicationCreate(
+            company_name="C1", job_title="Dev", job_description="d", status="interview"
+        ),
     )
     await service.create_application(
         user=test_user,
-        payload=ApplicationCreate(company_name="C2", job_title="Dev", job_description="d", status="offer"),
+        payload=ApplicationCreate(
+            company_name="C2", job_title="Dev", job_description="d", status="offer"
+        ),
     )
     await service.create_application(
         user=test_user,
-        payload=ApplicationCreate(company_name="C3", job_title="Dev", job_description="d", status="applied"),
+        payload=ApplicationCreate(
+            company_name="C3", job_title="Dev", job_description="d", status="applied"
+        ),
     )
 
     metrics_populated = await service.get_analytics_metrics(user=test_user)

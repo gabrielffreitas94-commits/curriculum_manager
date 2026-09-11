@@ -76,7 +76,9 @@ async def test_experiences_service_crud_and_not_found(
     # 6. Casos Não Encontrados (None / False)
     random_id = uuid.uuid4()
     assert await service.get_experience(user_id=user_id, experience_id=random_id) is None
-    assert await service.update_experience(user_id=user_id, experience_id=random_id, data={}) is None
+    assert (
+        await service.update_experience(user_id=user_id, experience_id=random_id, data={}) is None
+    )
     assert await service.delete_experience(user_id=user_id, experience_id=random_id) is False
 
 
@@ -135,9 +137,11 @@ async def test_educations_certifications_and_projects_service(
     ).name == "GCP Cloud Leader"
     assert await service.delete_certification(user_id=user_id, certification_id=cert.id) is True
     assert await service.get_certification(user_id=user_id, certification_id=fake_id) is None
-    assert await service.update_certification(user_id=user_id, certification_id=fake_id, data={}) is None
+    assert (
+        await service.update_certification(user_id=user_id, certification_id=fake_id, data={})
+        is None
+    )
     assert await service.delete_certification(user_id=user_id, certification_id=fake_id) is False
-
 
     # --- Projects ---
     proj = await service.create_project(
@@ -180,6 +184,7 @@ async def test_skills_and_languages_service(
         user_id=user_id,
         data={"name": "React", "category": "frontend", "proficiency_level": "intermediate"},
     )
+    assert s2.id is not None
     assert len(await service.list_skills(user_id=user_id)) == 2
     assert len(await service.list_skills(user_id=user_id, category="backend")) == 1
     assert len(await service.list_skills(user_id=user_id, category="devops")) == 0

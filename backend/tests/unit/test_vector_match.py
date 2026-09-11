@@ -138,8 +138,12 @@ def test_match_in_experiences_regex_and_certifications() -> None:
 
     result = engine.evaluate_match(dossier=dossier, job_analysis=job)
     assert result.match_percentage >= 90.0
-    assert any(m.requirement == "Apache Spark" and m.status == "matched" for m in result.mandatory_matches)
-    assert any(m.requirement == "Kubernetes" and m.status == "matched" for m in result.desirable_matches)
+    assert any(
+        m.requirement == "Apache Spark" and m.status == "matched" for m in result.mandatory_matches
+    )
+    assert any(
+        m.requirement == "Kubernetes" and m.status == "matched" for m in result.desirable_matches
+    )
 
 
 def test_match_with_completely_empty_dossier() -> None:
@@ -163,5 +167,3 @@ def test_match_with_completely_empty_dossier() -> None:
     assert len(result.missing_mandatory) == 2
     assert len(result.missing_desirable) == 1
     assert len(result.suggested_keywords) == 3
-
-

@@ -79,8 +79,12 @@ async def test_notification_service_list_and_read_flows(
     assert exc.value.status_code == 404
 
     # 6. Marcar todas como lidas em lote
-    n3 = Notification(user_id=user_id, notification_type="system", title="N3", message="M3", is_read=False)
-    n4 = Notification(user_id=user_id, notification_type="system", title="N4", message="M4", is_read=False)
+    n3 = Notification(
+        user_id=user_id, notification_type="system", title="N3", message="M3", is_read=False
+    )
+    n4 = Notification(
+        user_id=user_id, notification_type="system", title="N4", message="M4", is_read=False
+    )
     db_session.add_all([n3, n4])
     await db_session.commit()
 

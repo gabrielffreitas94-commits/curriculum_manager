@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import crypto_service
-from app.domain.models import User, UserSettings
+from app.domain.models import User
 from app.ports.auth_port import AuthUser
 
 USER_SETTINGS_AUTH = AuthUser(
@@ -86,7 +86,9 @@ async def test_get_and_update_settings_full_cycle(
         assert encrypted_in_db != raw_key
 
         # Decifra usando os dados associados do tenant (user_id)
-        decrypted = crypto_service.decrypt(encrypted_in_db, associated_data=str(user_id).encode("utf-8"))
+        decrypted = crypto_service.decrypt(
+            encrypted_in_db, associated_data=str(user_id).encode("utf-8")
+        )
         assert decrypted == raw_key
 
         # 4. PUT com string vazia deve limpar a chave (remover BYOK)
