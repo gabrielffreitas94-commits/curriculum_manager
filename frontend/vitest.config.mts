@@ -18,6 +18,9 @@ export default defineConfig({
         "**/*.d.ts",
         "src/app/layout.tsx",
       ],
+      thresholds: {
+        lines: 100,
+      },
     },
   },
   resolve: {
