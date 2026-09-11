@@ -160,7 +160,7 @@ def test_cascade_tier3_fuzzy_matching(sample_user_dossier: dict) -> None:
 
     result = engine.audit(generated_content=generated_content, user_dossier=sample_user_dossier)
     assert result.is_valid is True
-    # Ponderação com 90% para termos fuzzy (Postgres vs PostgreSQL)
+    # Média ponderada dos 5 fatos: 3 sintáticos (1.0) e 2 fuzzy (0.90) -> 4.80 / 5 = 96.0%
     assert result.trust_score == 96.0
     assert result.verified_counts_by_tier.get("fuzzy", 0) >= 2
 
@@ -199,7 +199,7 @@ def test_cascade_tier4_vector_validation_with_embeddings(sample_user_dossier: di
     )
 
     assert result.is_valid is True
-    # Validação vetorial reflete grau de aproximação semântica (85%), sem inflar para 100%
+    # Média ponderada dos 4 fatos: 2 sintáticos (1.0) e 2 vetoriais (0.85) -> 3.70 / 4 = 92.5%
     assert result.trust_score == 92.5
     assert result.verified_counts_by_tier.get("vector", 0) >= 2
 
