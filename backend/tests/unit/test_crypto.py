@@ -58,3 +58,49 @@ def test_invalid_key_length_raises_value_error() -> None:
     short_key = "YWJjZGVmZ2hpag=="
     with pytest.raises(ValueError, match="A chave mestra deve conter exatamente 32 bytes"):
         CryptoService(master_key_base64=short_key)
+
+
+def test_associated_data_encryption_and_decryption_success() -> None:
+    """Garante que cifragem e decifragem com o mesmo associated_data (tenant) funcione."""
+    master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    service = CryptoService(master_key_base64=master_key)
+
+    secret_text = "AIzaSyTenantBoundApiKey_987654321"
+    tenant_aad = b"tenant-user-uuid-12345"
+
+    encrypted = service.encrypt(secret_text, associated_data=tenant_aad)
+    assert encrypted != secret_text
+
+    decrypted = service.decrypt(encrypted, associated_data=tenant_aad)
+    assert decrypted == secret_text
+
+
+def test_associated_data_mismatch_fails_authentication() -> None:
+    """Garante que tentar decifrar com associated_data diferente (outro tenant) falhe via AEAD."""
+    master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    service = CryptoService(master_key_base64=master_key)
+
+    secret_text = "AIzaSySecretApiKey"
+    tenant_a = b"tenant-user-alice"
+    tenant_b = b"tenant-user-bob"
+
+    encrypted_for_alice = service.encrypt(secret_text, associated_data=tenant_a)
+
+    # Bob tenta decifrar os dados da Alice usando seu próprio tenant context
+    with pytest.raises(DecryptionError, match="Falha de autenticação ou payload corrompido"):
+        service.decrypt(encrypted_for_alice, associated_data=tenant_b)
+
+
+def test_associated_data_omitted_fails_when_encrypted_with_aad() -> None:
+    """Garante que decifrar sem AAD quando cifrado com AAD falhe na tag de autenticação."""
+    master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    service = CryptoService(master_key_base64=master_key)
+
+    secret = "TopSecret"
+    tenant_aad = b"tenant-secure"
+
+    encrypted = service.encrypt(secret, associated_data=tenant_aad)
+
+    with pytest.raises(DecryptionError, match="Falha de autenticação ou payload corrompido"):
+        service.decrypt(encrypted, associated_data=None)
+

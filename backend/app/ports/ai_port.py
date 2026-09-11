@@ -78,6 +78,12 @@ class FullGeneratedResumePayload(BaseModel):
     languages: list[dict[str, Any]] = Field(default_factory=list)
     match_analysis: dict[str, Any] = Field(default_factory=dict)
     match_percentage: float = 0.0
+    provenance_map: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Mapeamento de proveniência indicando o termo factual do dossiê usado como base."
+        ),
+    )
 
 
 class AIPort(ABC):

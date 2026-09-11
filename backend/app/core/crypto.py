@@ -63,11 +63,13 @@ class CryptoService:
 
         self._aesgcm = AESGCM(raw_key)
 
-    def encrypt(self, plaintext: str) -> str:
+    def encrypt(self, plaintext: str, associated_data: bytes | None = None) -> str:
         """Cifra uma string em texto plano e retorna a representação compactada em Base64.
 
         Args:
             plaintext: Texto a ser protegido (ex: API key do Google Gemini).
+            associated_data: Bytes adicionais autenticados (AEAD) para vincular o texto cifrado
+                ao contexto do tenant/usuário, prevenindo adulteração entre contas.
 
         Returns:
             str: String em Base64 contendo `nonce + ciphertext + auth_tag`.
@@ -77,23 +79,26 @@ class CryptoService:
         """
         nonce = os.urandom(self.NONCE_LENGTH_BYTES)
         raw_plaintext = plaintext.encode("utf-8")
-        ciphertext_with_tag = self._aesgcm.encrypt(nonce, raw_plaintext, None)
+        ciphertext_with_tag = self._aesgcm.encrypt(nonce, raw_plaintext, associated_data)
 
         # Concatena nonce (12B) + ciphertext com tag (variável)
         payload = nonce + ciphertext_with_tag
         return base64.b64encode(payload).decode("utf-8")
 
-    def decrypt(self, encrypted_base64: str) -> str:
+    def decrypt(self, encrypted_base64: str, associated_data: bytes | None = None) -> str:
         """Decifra um payload protegido e valida a integridade da tag de autenticação.
 
         Args:
             encrypted_base64: String Base64 gerada previamente pelo método `encrypt`.
+            associated_data: Bytes adicionais autenticados (AEAD) que devem corresponder
+                exatamente aos fornecidos durante a cifragem.
 
         Returns:
             str: O texto plano original restaurado.
 
         Raises:
-            DecryptionError: Se o payload estiver corrompido, adulterado ou a chave for inválida.
+            DecryptionError: Se o payload estiver corrompido, adulterado, a chave for inválida
+                ou os dados associados (associated_data) não conferirem.
         """
         try:
             payload = base64.b64decode(encrypted_base64)
@@ -109,7 +114,7 @@ class CryptoService:
         ciphertext_with_tag = payload[self.NONCE_LENGTH_BYTES :]
 
         try:
-            raw_plaintext = self._aesgcm.decrypt(nonce, ciphertext_with_tag, None)
+            raw_plaintext = self._aesgcm.decrypt(nonce, ciphertext_with_tag, associated_data)
             return raw_plaintext.decode("utf-8")
         except InvalidTag as exc:
             raise DecryptionError(

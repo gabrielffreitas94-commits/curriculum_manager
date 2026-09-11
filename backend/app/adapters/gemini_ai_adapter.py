@@ -136,6 +136,8 @@ class GeminiAIAdapter(AIPort):
             "3. Se a vaga exigir algo que o candidato não possui, classifique o requisito "
             "como 'missing' na matriz de match e NÃO invente a competência no currículo.\n"
             f"4. O idioma final de redação de todo o documento deve ser estritamente: {language}.\n"
+            "5. Caso use variações sintáticas ou abreviações, preencha o campo 'provenance_map' "
+            "mapeando o termo gerado para o termo factual do DOSSIÊ DO USUÁRIO.\n"
         )
 
         dossier_json = json.dumps(user_dossier, ensure_ascii=False)

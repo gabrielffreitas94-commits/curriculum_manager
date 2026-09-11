@@ -109,3 +109,126 @@ def test_audit_prunes_hallucinated_skills(sample_user_dossier: dict) -> None:
     assert "Rust" not in sanitized["skills_highlighted"]
     assert "Kubernetes" not in sanitized["skills_highlighted"]
     assert "Python" in sanitized["skills_highlighted"]
+
+
+def test_cascade_tier2_provenance_validation(sample_user_dossier: dict) -> None:
+    """Testa aprovação pela Camada 2 (Proveniência) onde a IA cita o termo original do dossiê."""
+    engine = GroundingAuditEngine()
+
+    # Adiciona "Amazon Web Services" ao dossiê
+    sample_user_dossier["skills"].append("Amazon Web Services")
+
+    # A IA gerou a sigla "AWS", mas informou a proveniência original no provenance_map
+    generated_content = {
+        "selected_experiences": [
+            {
+                "company_name": "Acme Tech",
+                "position_title": "Senior Software Engineer",
+                "tech_stack": ["Python", "AWS"],
+                "bullet_points": ["Infraestrutura cloud"],
+            }
+        ],
+        "skills_highlighted": ["AWS"],
+        "provenance_map": {
+            "AWS": "Amazon Web Services",
+        },
+    }
+
+    result = engine.audit(generated_content=generated_content, user_dossier=sample_user_dossier)
+    assert result.is_valid is True
+    assert result.trust_score == 100.0
+    assert result.verified_counts_by_tier.get("provenance", 0) >= 2
+
+
+def test_cascade_tier3_fuzzy_matching(sample_user_dossier: dict) -> None:
+    """Testa aprovação pela Camada 3 (Fuzzy Matching ~85%) para variações de grafia."""
+    engine = GroundingAuditEngine()
+
+    # No dossiê temos "PostgreSQL", a IA gerou "Postgres" sem provenance_map
+    # SequenceMatcher("postgres", "postgresql").ratio() == 0.888 (88.9% >= 85%)
+    generated_content = {
+        "selected_experiences": [
+            {
+                "company_name": "Acme Tech",
+                "position_title": "Senior Software Engineer",
+                "tech_stack": ["Python", "Postgres"],
+                "bullet_points": ["Banco relacional"],
+            }
+        ],
+        "skills_highlighted": ["Python", "Postgres"],
+    }
+
+    result = engine.audit(generated_content=generated_content, user_dossier=sample_user_dossier)
+    assert result.is_valid is True
+    assert result.trust_score == 100.0
+    assert result.verified_counts_by_tier.get("fuzzy", 0) >= 2
+
+
+def test_cascade_tier4_vector_validation_with_embeddings(sample_user_dossier: dict) -> None:
+    """Testa aprovação pela Camada 4 (Vetorial) usando embeddings para termos correlacionados."""
+    engine = GroundingAuditEngine()
+
+    # Dossiê possui "Go" cadastrado
+    sample_user_dossier["skills"].append("Go")
+
+    # A IA gerou "Golang" (distância sintática ratio ~0.50, reprovada em fuzzy)
+    generated_content = {
+        "selected_experiences": [
+            {
+                "company_name": "Acme Tech",
+                "position_title": "Senior Software Engineer",
+                "tech_stack": ["Python", "Golang"],
+                "bullet_points": ["Desenvolveu em Go"],
+            }
+        ],
+        "skills_highlighted": ["Golang"],
+    }
+
+    # Fornece vetores de embeddings semânticos densos para Go e Golang
+    mock_embeddings = {
+        "Golang": [0.95, 0.05, 0.0],
+        "Go": [0.93, 0.07, 0.0],
+        "Python": [0.1, 0.9, 0.0],
+    }
+
+    result = engine.audit(
+        generated_content=generated_content,
+        user_dossier=sample_user_dossier,
+        vector_embeddings=mock_embeddings,
+    )
+
+    assert result.is_valid is True
+    assert result.trust_score == 100.0
+    assert result.verified_counts_by_tier.get("vector", 0) >= 2
+
+
+def test_cascade_all_tiers_fail_for_true_hallucination(sample_user_dossier: dict) -> None:
+    """Garante rejeição quando uma tecnologia inventada falha em todas as 4 camadas do pipeline."""
+    engine = GroundingAuditEngine()
+
+    # IA inventou "QuantumBlockchainAI"
+    generated_content = {
+        "selected_experiences": [
+            {
+                "company_name": "Acme Tech",
+                "position_title": "Senior Software Engineer",
+                "tech_stack": ["Python", "QuantumBlockchainAI"],
+                "bullet_points": ["Alucinação"],
+            }
+        ],
+        "skills_highlighted": ["QuantumBlockchainAI"],
+        "provenance_map": {
+            "QuantumBlockchainAI": "NonExistentSource",
+        },
+    }
+
+    result = engine.audit(generated_content=generated_content, user_dossier=sample_user_dossier)
+    assert result.is_valid is False
+    assert any("QuantumBlockchainAI" in h.hallucinated_value for h in result.hallucinations)
+    assert any("reprovada em todas as camadas" in h.description for h in result.hallucinations)
+
+    # Verifica se a poda remove a habilidade
+    sanitized = engine.sanitize(generated_content, result)
+    assert "QuantumBlockchainAI" not in sanitized["skills_highlighted"]
+    assert "QuantumBlockchainAI" not in sanitized["selected_experiences"][0]["tech_stack"]
+

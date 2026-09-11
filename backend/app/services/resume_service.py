@@ -61,10 +61,18 @@ class ResumeService:
         api_key: str | None = None
 
         if user.settings and user.settings.encrypted_gemini_api_key:
+            user_aad = str(user.id).encode("utf-8")
             try:
-                api_key = crypto_service.decrypt(user.settings.encrypted_gemini_api_key)
+                api_key = crypto_service.decrypt(
+                    user.settings.encrypted_gemini_api_key,
+                    associated_data=user_aad,
+                )
             except Exception:
-                api_key = None
+                try:
+                    # Fallback suave para chaves legadas decifradas sem associated_data
+                    api_key = crypto_service.decrypt(user.settings.encrypted_gemini_api_key)
+                except Exception:
+                    api_key = None
 
         if not api_key:
             api_key = os.getenv("GEMINI_API_KEY")

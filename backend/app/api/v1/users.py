@@ -73,8 +73,12 @@ async def update_my_settings(
 
     if body.gemini_api_key is not None:
         if body.gemini_api_key.strip():
-            # Cifra a chave antes de persistir no banco relacional
-            settings.encrypted_gemini_api_key = crypto_service.encrypt(body.gemini_api_key.strip())
+            # Cifra a chave antes de persistir no banco relacional vinculando ao tenant_id (user.id)
+            tenant_aad = str(current_user.id).encode("utf-8")
+            settings.encrypted_gemini_api_key = crypto_service.encrypt(
+                body.gemini_api_key.strip(),
+                associated_data=tenant_aad,
+            )
         else:
             settings.encrypted_gemini_api_key = None
 

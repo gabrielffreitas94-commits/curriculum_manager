@@ -39,7 +39,10 @@ async def setup_match_user(db_session: AsyncSession) -> dict:
 
     settings = UserSettings(
         user_id=user.id,
-        encrypted_gemini_api_key=crypto_service.encrypt("AIzaSyMockKeyForMatchTesting"),
+        encrypted_gemini_api_key=crypto_service.encrypt(
+            "AIzaSyMockKeyForMatchTesting",
+            associated_data=str(user.id).encode("utf-8"),
+        ),
     )
     db_session.add(settings)
 
