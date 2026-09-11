@@ -92,7 +92,7 @@ def test_associated_data_mismatch_fails_authentication() -> None:
 
 
 def test_associated_data_omitted_fails_when_encrypted_with_aad() -> None:
-    """Garante que decifrar sem AAD quando cifrado com AAD falhe na tag de autenticação."""
+    """Garante que tentar decifrar um segredo omitindo os dados associados resulte em erro AEAD."""
     master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     service = CryptoService(master_key_base64=master_key)
 

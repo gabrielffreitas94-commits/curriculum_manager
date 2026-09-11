@@ -111,6 +111,13 @@ class GroundingAuditEngine:
             return 0.0
         return float(dot / (norm1 * norm2))
 
+    TIER_CONFIDENCE: dict[ValidationTier, float] = {
+        ValidationTier.SYNTACTIC: 1.0,
+        ValidationTier.PROVENANCE: 1.0,
+        ValidationTier.FUZZY: 0.90,
+        ValidationTier.VECTOR: 0.85,
+    }
+
     def validate_term(
         self,
         term: str,
@@ -120,7 +127,7 @@ class GroundingAuditEngine:
         vector_evaluator: Callable[[str, str], float] | None = None,
         fuzzy_threshold: float = FUZZY_THRESHOLD,
         vector_threshold: float = VECTOR_THRESHOLD,
-    ) -> tuple[bool, ValidationTier | None]:
+    ) -> ValidationTier | None:
         """Valida um termo gerado seguindo a cascata estrita de 4 camadas.
 
         Args:
@@ -133,14 +140,14 @@ class GroundingAuditEngine:
             vector_threshold: Limiar de similaridade vetorial (padrão: 0.80).
 
         Returns:
-            Tupla (is_valid, validation_tier) indicando sucesso e qual camada aprovou o termo.
+            ValidationTier correspondente à camada que aprovou o termo, ou None se reprovado.
         """
         clean_term = term.lower().strip()
         normalized_registered = {t.lower().strip() for t in registered_terms}
 
         # 1. Validação Sintática (termo exato normalizado)
         if clean_term in normalized_registered:
-            return True, ValidationTier.SYNTACTIC
+            return ValidationTier.SYNTACTIC
 
         # 2. Validação por Proveniência (grounded_in)
         if provenance_map:
@@ -148,13 +155,13 @@ class GroundingAuditEngine:
             if source_term:
                 clean_source = source_term.lower().strip()
                 if clean_source in normalized_registered:
-                    return True, ValidationTier.PROVENANCE
+                    return ValidationTier.PROVENANCE
 
         # 3. Fuzzy Matching (similaridade sintática parcial >= 85%)
         for reg in normalized_registered:
             ratio = SequenceMatcher(None, clean_term, reg).ratio()
             if ratio >= fuzzy_threshold:
-                return True, ValidationTier.FUZZY
+                return ValidationTier.FUZZY
 
         # 4. Validação Vetorial (embeddings ou avaliador semântico)
         if vector_embeddings and term in vector_embeddings:
@@ -163,22 +170,22 @@ class GroundingAuditEngine:
                 if reg_name in vector_embeddings:
                     sim = self._cosine_similarity(term_vec, vector_embeddings[reg_name])
                     if sim >= vector_threshold:
-                        return True, ValidationTier.VECTOR
+                        return ValidationTier.VECTOR
 
         if vector_evaluator:
             for reg_name in registered_terms:
                 sim = vector_evaluator(term, reg_name)
                 if sim >= vector_threshold:
-                    return True, ValidationTier.VECTOR
+                    return ValidationTier.VECTOR
 
         # Fallback para modelo vetorial subpalavra n-gram
         if not vector_embeddings and not vector_evaluator:
             for reg in normalized_registered:
                 sim = self._subword_vector_similarity(clean_term, reg)
                 if sim >= vector_threshold:
-                    return True, ValidationTier.VECTOR
+                    return ValidationTier.VECTOR
 
-        return False, None
+        return None
 
     def audit(
         self,
@@ -200,7 +207,7 @@ class GroundingAuditEngine:
         """
         issues: list[HallucinationIssue] = []
         total_facts = 0
-        verified_facts = 0
+        verified_confidence = 0.0
         tier_counts: dict[str, int] = {}
 
         # Normaliza conjuntos factuais do usuário
@@ -214,14 +221,14 @@ class GroundingAuditEngine:
             company = exp.get("company_name", "").strip()
             total_facts += 1
 
-            is_valid_comp, comp_tier = self.validate_term(
+            comp_tier = self.validate_term(
                 term=company,
                 registered_terms=registered_companies,
                 provenance_map=provenance_map,
                 fuzzy_threshold=0.90,  # Empresas exigem limiar mais rígido
             )
 
-            if not is_valid_comp:
+            if comp_tier is None:
                 issues.append(
                     HallucinationIssue(
                         field="selected_experiences.company_name",
@@ -231,14 +238,13 @@ class GroundingAuditEngine:
                     )
                 )
             else:
-                verified_facts += 1
-                if comp_tier:
-                    tier_counts[comp_tier.value] = tier_counts.get(comp_tier.value, 0) + 1
+                verified_confidence += self.TIER_CONFIDENCE[comp_tier]
+                tier_counts[comp_tier.value] = tier_counts.get(comp_tier.value, 0) + 1
 
             # Validação de Stack das Experiências com pipeline de 4 camadas
             for tech in exp.get("tech_stack", []):
                 total_facts += 1
-                is_valid_tech, tech_tier = self.validate_term(
+                tech_tier = self.validate_term(
                     term=tech,
                     registered_terms=registered_skills,
                     provenance_map=provenance_map,
@@ -246,7 +252,7 @@ class GroundingAuditEngine:
                     vector_evaluator=vector_evaluator,
                 )
 
-                if not is_valid_tech:
+                if tech_tier is None:
                     issues.append(
                         HallucinationIssue(
                             field="selected_experiences.tech_stack",
@@ -259,15 +265,14 @@ class GroundingAuditEngine:
                         )
                     )
                 else:
-                    verified_facts += 1
-                    if tech_tier:
-                        tier_counts[tech_tier.value] = tier_counts.get(tech_tier.value, 0) + 1
+                    verified_confidence += self.TIER_CONFIDENCE[tech_tier]
+                    tier_counts[tech_tier.value] = tier_counts.get(tech_tier.value, 0) + 1
 
         # 2. Validação de Skills em Destaque com pipeline de 4 camadas
         skills = generated_content.get("skills_highlighted", [])
         for skill in skills:
             total_facts += 1
-            is_valid_skill, skill_tier = self.validate_term(
+            skill_tier = self.validate_term(
                 term=skill,
                 registered_terms=registered_skills,
                 provenance_map=provenance_map,
@@ -275,7 +280,7 @@ class GroundingAuditEngine:
                 vector_evaluator=vector_evaluator,
             )
 
-            if not is_valid_skill:
+            if skill_tier is None:
                 issues.append(
                     HallucinationIssue(
                         field="skills_highlighted",
@@ -288,13 +293,14 @@ class GroundingAuditEngine:
                     )
                 )
             else:
-                verified_facts += 1
-                if skill_tier:
-                    tier_counts[skill_tier.value] = tier_counts.get(skill_tier.value, 0) + 1
+                verified_confidence += self.TIER_CONFIDENCE[skill_tier]
+                tier_counts[skill_tier.value] = tier_counts.get(skill_tier.value, 0) + 1
 
-        # Cálculo do Trust Score
+        # Cálculo do Trust Score ponderado pelo grau de certeza factual de cada camada
         trust_score = (
-            100.0 if total_facts == 0 else round((verified_facts / total_facts) * 100.0, 2)
+            100.0
+            if total_facts == 0
+            else round((verified_confidence / total_facts) * 100.0, 2)
         )
 
         # Avaliação de Severidade e Aceitabilidade
