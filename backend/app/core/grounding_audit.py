@@ -298,9 +298,7 @@ class GroundingAuditEngine:
 
         # Cálculo do Trust Score ponderado pelo grau de certeza factual de cada camada
         trust_score = (
-            100.0
-            if total_facts == 0
-            else round((verified_confidence / total_facts) * 100.0, 2)
+            100.0 if total_facts == 0 else round((verified_confidence / total_facts) * 100.0, 2)
         )
 
         # Avaliação de Severidade e Aceitabilidade

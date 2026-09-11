@@ -103,4 +103,3 @@ def test_associated_data_omitted_fails_when_encrypted_with_aad() -> None:
 
     with pytest.raises(DecryptionError, match="Falha de autenticação ou payload corrompido"):
         service.decrypt(encrypted, associated_data=None)
-

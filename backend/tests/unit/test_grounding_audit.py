@@ -233,4 +233,3 @@ def test_cascade_all_tiers_fail_for_true_hallucination(sample_user_dossier: dict
     sanitized = engine.sanitize(generated_content, result)
     assert "QuantumBlockchainAI" not in sanitized["skills_highlighted"]
     assert "QuantumBlockchainAI" not in sanitized["selected_experiences"][0]["tech_stack"]
-
