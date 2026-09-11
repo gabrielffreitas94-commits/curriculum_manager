@@ -98,7 +98,10 @@ def test_weasyprint_adapter_renders_pdf() -> None:
     with patch.dict("sys.modules", {"weasyprint": mock_wp}):
         pdf_bytes = adapter.render_pdf(dummy_html)
         assert pdf_bytes.startswith(b"%PDF-1.4")
-        mock_wp.HTML.assert_called_once_with(string=dummy_html)
+        mock_wp.HTML.assert_called_once_with(
+            string=dummy_html,
+            url_fetcher=adapter._url_fetcher,
+        )
 
 
 def test_weasyprint_adapter_raises_when_missing_deps() -> None:
@@ -111,3 +114,36 @@ def test_weasyprint_adapter_raises_when_missing_deps() -> None:
         pytest.raises(RuntimeError, match="requer bibliotecas C nativas"),
     ):
         adapter.render_pdf(dummy_html)
+
+
+def test_blocked_url_fetcher_prevents_ssrf_and_lfi() -> None:
+    """Garante que o blocked_url_fetcher bloqueie tentativas de SSRF e LFI."""
+    from app.adapters.weasyprint_adapter import blocked_url_fetcher
+
+    # Teste de tentativa de LFI via file://
+    with pytest.raises(ValueError, match="Acesso bloqueado por segurança"):
+        blocked_url_fetcher("file:///etc/passwd")
+
+    # Teste de tentativa de SSRF contra metadados de nuvem
+    with pytest.raises(ValueError, match="Acesso bloqueado por segurança"):
+        blocked_url_fetcher("http://169.254.169.254/computeMetadata/v1/")
+
+
+def test_weasyprint_adapter_custom_url_fetcher() -> None:
+    """Valida suporte a injeção de url_fetcher customizado no WeasyPrintAdapter."""
+    custom_fetcher = MagicMock()
+    adapter = WeasyPrintAdapter(url_fetcher=custom_fetcher)
+    assert adapter._url_fetcher == custom_fetcher
+
+    mock_wp = MagicMock()
+    mock_html_instance = MagicMock()
+    mock_html_instance.write_pdf.return_value = b"%PDF-1.4 custom"
+    mock_wp.HTML.return_value = mock_html_instance
+
+    with patch.dict("sys.modules", {"weasyprint": mock_wp}):
+        pdf_bytes = adapter.render_pdf("<p>Test</p>")
+        assert pdf_bytes == b"%PDF-1.4 custom"
+        mock_wp.HTML.assert_called_once_with(
+            string="<p>Test</p>",
+            url_fetcher=custom_fetcher,
+        )
