@@ -261,3 +261,41 @@ async def test_generate_resume_concurrency_lock(
             assert "GENERATION_ALREADY_IN_PROGRESS" in res.json()["detail"]
         finally:
             _ACTIVE_GENERATIONS.discard(user_id)
+
+
+@pytest.mark.asyncio
+async def test_generate_resume_validation_errors(
+    async_client: AsyncClient,
+    setup_resume_user: dict,
+) -> None:
+    """Valida 400 quando falta application_id e 404 quando a vaga informada não existe."""
+    headers = setup_resume_user["headers"]
+
+    with (
+        patch("app.api.v1.deps.auth_adapter.verify_token", return_value=TEST_USER_AUTH),
+        patch("app.services.resume_service.GeminiAIAdapter.generate_resume"),
+    ):
+        # 1. Sem application_id e create_application=False -> 400
+        res_400 = await async_client.post(
+            "/api/v1/resumes/generate",
+            headers=headers,
+            json={
+                "job_description": "Vaga sem candidatura informada e sem criar nova vaga.",
+                "create_application": False,
+                "application_id": None,
+            },
+        )
+        assert res_400.status_code == 400
+
+        # 2. application_id inexistente -> 404
+        res_404 = await async_client.post(
+            "/api/v1/resumes/generate",
+            headers=headers,
+            json={
+                "job_description": "Vaga com ID inexistente no banco de dados.",
+                "create_application": False,
+                "application_id": str(uuid.uuid4()),
+            },
+        )
+        assert res_404.status_code == 404
+

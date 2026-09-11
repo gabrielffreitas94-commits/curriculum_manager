@@ -103,3 +103,50 @@ def test_associated_data_omitted_fails_when_encrypted_with_aad() -> None:
 
     with pytest.raises(DecryptionError, match="Falha de autenticação ou payload corrompido"):
         service.decrypt(encrypted, associated_data=None)
+
+
+def test_invalid_base64_master_key_raises_value_error() -> None:
+    """Garante que fornecer uma chave mestre com Base64 inválido lance ValueError."""
+    invalid_b64 = "### Not A Valid Base64 String ###"
+    with pytest.raises(ValueError, match="não é um Base64 válido"):
+        CryptoService(master_key_base64=invalid_b64)
+
+
+def test_decrypt_invalid_base64_payload_raises_decryption_error() -> None:
+    """Garante que tentar decifrar uma string que não é Base64 lance DecryptionError."""
+    master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    service = CryptoService(master_key_base64=master_key)
+
+    with pytest.raises(DecryptionError, match="codificação Base64 inválida"):
+        service.decrypt("abcde")
+
+
+def test_decrypt_payload_too_short_raises_decryption_error() -> None:
+    """Garante que payload menor ou igual aos 12 bytes do nonce lance DecryptionError."""
+    import base64
+
+    master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    service = CryptoService(master_key_base64=master_key)
+
+    # 10 bytes apenas
+    short_payload_b64 = base64.b64encode(b"0123456789").decode("utf-8")
+    with pytest.raises(DecryptionError, match="inferior ao nonce mínimo"):
+        service.decrypt(short_payload_b64)
+
+
+def test_decrypt_unexpected_exception_raises_decryption_error() -> None:
+    """Garante que qualquer erro não esperado na decifragem seja envelopado em DecryptionError."""
+    from unittest.mock import MagicMock
+
+    master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    service = CryptoService(master_key_base64=master_key)
+
+    encrypted = service.encrypt("SafeString")
+    mock_gcm = MagicMock()
+    mock_gcm.decrypt.side_effect = RuntimeError("Falha inesperada de decodificação")
+    service._aesgcm = mock_gcm
+
+    with pytest.raises(DecryptionError, match="Erro inesperado durante a decifragem"):
+        service.decrypt(encrypted)
+
+

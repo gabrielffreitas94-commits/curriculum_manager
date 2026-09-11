@@ -233,3 +233,44 @@ def test_cascade_all_tiers_fail_for_true_hallucination(sample_user_dossier: dict
     sanitized = engine.sanitize(generated_content, result)
     assert "QuantumBlockchainAI" not in sanitized["skills_highlighted"]
     assert "QuantumBlockchainAI" not in sanitized["selected_experiences"][0]["tech_stack"]
+
+
+def test_audit_vector_evaluator_callable_and_zero_norms(sample_user_dossier: dict) -> None:
+    """Testa o suporte a vector_evaluator customizado e tratamento de vetores nulos."""
+    engine = GroundingAuditEngine()
+
+    # 1. Cosseno com norma zero deve retornar 0.0 seguramente
+    assert engine._cosine_similarity([0.0, 0.0], [1.0, 2.0]) == 0.0
+    assert engine._cosine_similarity([1.0, 2.0], [0.0, 0.0]) == 0.0
+
+    # 2. String menor que n (ex: 2 caracteres como "Go") no extrator de n-gram
+    v_short = engine._char_ngram_vector("Go", n=3)
+    assert v_short == {"Go": 1}
+
+    # 3. Similaridade subpalavra com string vazia vs string com conteúdo retorna 0.0
+    assert engine._subword_vector_similarity("", "python") == 0.0
+
+
+    # 4. Avaliador vetorial dinâmico (vector_evaluator callable)
+    def custom_evaluator(t1: str, t2: str) -> float:
+        if (t1.lower() == "golang" and t2.lower() == "go") or (
+            t1.lower() == "go" and t2.lower() == "golang"
+        ):
+            return 0.95
+        return 0.1
+
+    sample_user_dossier["skills"].append("Go")
+    content = {
+        "selected_experiences": [],
+        "skills_highlighted": ["Golang"],
+    }
+
+    result = engine.audit(
+        generated_content=content,
+        user_dossier=sample_user_dossier,
+        vector_evaluator=custom_evaluator,
+    )
+    assert result.is_valid is True
+    assert result.verified_counts_by_tier.get("vector", 0) >= 1
+
+

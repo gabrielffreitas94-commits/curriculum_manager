@@ -435,3 +435,52 @@ async def test_certifications_and_projects_lifecycle(
             headers=headers,
         )
         assert del_p.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_profile_entities_not_found_return_404(
+    async_client: AsyncClient,
+    setup_users: dict[str, str],
+) -> None:
+    """Garante resposta 404 consistente em todas as entidades filhas do perfil para IDs inexistentes."""
+    import uuid
+
+    headers = {"Authorization": setup_users["token_a"]}
+    fake_id = uuid.uuid4()
+
+    with patch("app.api.v1.deps.auth_adapter.verify_token", return_value=USER_A_AUTH):
+        # GET 404 na experiência (única entidade com rota GET /{id} individual)
+        res_get_exp = await async_client.get(f"/api/v1/profile/experiences/{fake_id}", headers=headers)
+        assert res_get_exp.status_code == 404
+
+        entities = ["experiences", "educations", "certifications", "projects", "skills", "languages"]
+        for ent in entities:
+            # PUT 404
+            res_put = await async_client.put(f"/api/v1/profile/{ent}/{fake_id}", headers=headers, json={})
+            assert res_put.status_code == 404, f"PUT /profile/{ent}/{fake_id} deveria retornar 404"
+
+            # DELETE 404
+            res_del = await async_client.delete(f"/api/v1/profile/{ent}/{fake_id}", headers=headers)
+            assert res_del.status_code == 404, f"DELETE /profile/{ent}/{fake_id} deveria retornar 404"
+
+
+@pytest.mark.asyncio
+async def test_get_full_dossier_endpoint(
+    async_client: AsyncClient,
+    setup_users: dict[str, str],
+) -> None:
+    """Valida os endpoints agregados GET /profile/full e GET /profile/dossier retornando todas as coleções."""
+    headers = {"Authorization": setup_users["token_a"]}
+
+    with patch("app.api.v1.deps.auth_adapter.verify_token", return_value=USER_A_AUTH):
+        for endpoint in ["/api/v1/profile/full", "/api/v1/profile/dossier"]:
+            res = await async_client.get(endpoint, headers=headers)
+            assert res.status_code == 200
+            data = res.json()
+            assert "experiences" in data
+            assert "educations" in data
+            assert "certifications" in data
+            assert "projects" in data
+            assert "skills" in data
+            assert "languages" in data
+

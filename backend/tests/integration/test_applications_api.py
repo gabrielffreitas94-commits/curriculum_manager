@@ -322,3 +322,88 @@ async def test_application_tenant_isolation(
             headers=headers_b,
         )
         assert res_delete.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_and_delete_application_lifecycle(
+    async_client: AsyncClient,
+    setup_ats_users: dict,
+) -> None:
+    """Garante atualização (PATCH) e remoção lógica (DELETE) pelo proprietário."""
+    headers_a = setup_ats_users["headers_a"]
+
+    with patch("app.api.v1.deps.auth_adapter.verify_token", return_value=AUTH_USER_A):
+        # 1. Cria candidatura
+        res_create = await async_client.post(
+            "/api/v1/applications",
+            headers=headers_a,
+            json={
+                "company_name": "Lifecycle Corp",
+                "job_title": "Initial Title",
+                "job_description": "Initial Desc",
+                "status": "applied",
+            },
+        )
+        assert res_create.status_code == 201
+        app_id = res_create.json()["id"]
+
+        # 2. PATCH: Atualiza para 'interview' e altera cargo
+        res_patch = await async_client.patch(
+            f"/api/v1/applications/{app_id}",
+            headers=headers_a,
+            json={"job_title": "Updated Title", "status": "interview"},
+        )
+        assert res_patch.status_code == 200
+        patched_data = res_patch.json()
+        assert patched_data["job_title"] == "Updated Title"
+        assert patched_data["status"] == "interview"
+
+        # 3. DELETE: Soft delete
+        res_delete = await async_client.delete(
+            f"/api/v1/applications/{app_id}",
+            headers=headers_a,
+        )
+        assert res_delete.status_code == 204
+
+        # 4. Confirma que a candidatura não aparece mais na listagem
+        res_list = await async_client.get("/api/v1/applications", headers=headers_a)
+        assert res_list.status_code == 200
+        items = res_list.json()
+        assert not any(it["id"] == app_id for it in items)
+
+        # 5. Tentativa de obter detalhe da vaga deletada deve retornar 404
+        res_detail = await async_client.get(f"/api/v1/applications/{app_id}", headers=headers_a)
+        assert res_detail.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_application_subroutes_not_found(
+    async_client: AsyncClient,
+    setup_ats_users: dict,
+) -> None:
+    """Garante erro 404 ao tentar adicionar recursos filhos a uma vaga inexistente."""
+    headers_a = setup_ats_users["headers_a"]
+    fake_app_id = uuid.uuid4()
+
+    with patch("app.api.v1.deps.auth_adapter.verify_token", return_value=AUTH_USER_A):
+        res_stage = await async_client.post(
+            f"/api/v1/applications/{fake_app_id}/stages",
+            headers=headers_a,
+            json={"stage_name": "Fase", "order_index": 1},
+        )
+        assert res_stage.status_code == 404
+
+        res_contact = await async_client.post(
+            f"/api/v1/applications/{fake_app_id}/contacts",
+            headers=headers_a,
+            json={"name": "Recrutador"},
+        )
+        assert res_contact.status_code == 404
+
+        res_note = await async_client.post(
+            f"/api/v1/applications/{fake_app_id}/notes",
+            headers=headers_a,
+            json={"content": "Nota", "note_type": "general"},
+        )
+        assert res_note.status_code == 404
+
