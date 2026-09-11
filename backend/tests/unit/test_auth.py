@@ -352,3 +352,37 @@ def test_firebase_auth_adapter_default_attributes() -> None:
     assert adapter._firebase_project_id == "thothcvs-ai"
     assert adapter._public_key is None
     assert adapter._jwks_client is not None
+
+
+@pytest.mark.asyncio
+async def test_verify_token_fallback_user_id(rsa_keys: tuple[bytes, bytes]) -> None:
+    """Garante fallback para claim 'user_id' quando 'sub' estiver ausente no payload."""
+    pem_private, pem_public = rsa_keys
+    adapter = FirebaseAuthAdapter(firebase_project_id="thothcvs-ai", public_key=pem_public)
+
+    payload = {
+        "user_id": "legacy_firebase_user_888",
+        "email": "legacy@thothcvs.ai",
+        "name": "Legacy User",
+        "aud": "thothcvs-ai",
+        "iss": "https://securetoken.google.com/thothcvs-ai",
+        "exp": int(time.time()) + 3600,
+    }
+    encoded_token = jwt.encode(payload, pem_private, algorithm="RS256")
+
+    auth_user = await adapter.verify_token(encoded_token)
+
+    assert auth_user.uid == "legacy_firebase_user_888"
+    assert auth_user.email == "legacy@thothcvs.ai"
+    assert auth_user.full_name == "Legacy User"
+
+
+@pytest.mark.asyncio
+async def test_verify_token_jwks_network_failure_raises_invalid_token() -> None:
+    """Garante que falhas de rede no PyJWKClient levantem InvalidTokenError com clareza."""
+    mock_jwks = MagicMock()
+    mock_jwks.get_signing_key_from_jwt.side_effect = ConnectionError("Google JWKS unreachable")
+    adapter = FirebaseAuthAdapter(jwks_client=mock_jwks)
+
+    with pytest.raises(InvalidTokenError, match="Token Firebase inválido"):
+        await adapter.verify_token("some.valid.jwt")
