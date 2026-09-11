@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ header.full_name }} - {{ header.target_title }}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 15mm 12mm;
+      @bottom-right {
+        content: counter(page) " / " counter(pages);
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #94a3b8;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 9.5pt;
+      line-height: 1.4;
+      color: #1e293b;
+      background-color: #ffffff;
+    }
+
+    header {
+      text-align: left;
+      border-bottom: 2px solid #0284c7;
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-size: 18pt;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.02em;
+      margin-bottom: 2px;
+    }
+
+    .target-title {
+      font-size: 11pt;
+      font-weight: 600;
+      color: #0284c7;
+      margin-bottom: 6px;
+    }
+
+    .contact-bar {
+      font-size: 8.5pt;
+      color: #64748b;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .contact-item {
+      display: inline-block;
+    }
+
+    .contact-item:not(:last-child)::after {
+      content: " • ";
+      margin-left: 8px;
+      color: #cbd5e1;
+    }
+
+    section {
+      margin-bottom: 14px;
+    }
+
+    h2 {
+      font-size: 10.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #0f172a;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 3px;
+      margin-bottom: 8px;
+    }
+
+    .summary-text {
+      text-align: justify;
+      color: #334155;
+    }
+
+    .item-block {
+      margin-bottom: 10px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 2px;
+    }
+
+    .item-role {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .item-company {
+      font-size: 9.5pt;
+      font-weight: 600;
+      color: #475569;
+    }
+
+    .item-date {
+      font-size: 8.5pt;
+      font-weight: 500;
+      color: #64748b;
+      text-align: right;
+    }
+
+    ul.bullet-list {
+      margin-left: 16px;
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+
+    ul.bullet-list li {
+      margin-bottom: 2px;
+      color: #334155;
+    }
+
+    .tech-stack-line {
+      font-size: 8.5pt;
+      margin-top: 3px;
+      color: #475569;
+    }
+
+    .tech-stack-label {
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .skills-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .skill-badge {
+      display: inline-block;
+      background-color: #f1f5f9;
+      color: #334155;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 8.5pt;
+      font-weight: 500;
+    }
+
+    .language-item {
+      font-size: 9pt;
+      color: #334155;
+      display: inline-block;
+      margin-right: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. Cabeçalho de Identificação -->
+  <header>
+    <h1>{{ header.full_name }}</h1>
+    {% if header.target_title %}
+      <div class="target-title">{{ header.target_title }}</div>
+    {% endif %}
+    <div class="contact-bar">
+      {% if header.email %}<span class="contact-item">{{ header.email }}</span>{% endif %}
+      {% if header.phone %}<span class="contact-item">{{ header.phone }}</span>{% endif %}
+      {% if header.location %}<span class="contact-item">{{ header.location }}</span>{% endif %}
+      {% if header.links %}
+        {% for k, v in header.links.items() %}
+          {% if v %}<span class="contact-item">{{ v }}</span>{% endif %}
+        {% endfor %}
+      {% endif %}
+    </div>
+  </header>
+
+  <main>
+    <!-- 2. Resumo Profissional -->
+    {% if professional_summary %}
+      <section>
+        <h2>{{ t("summary") }}</h2>
+        <p class="summary-text">{{ professional_summary }}</p>
+      </section>
+    {% endif %}
+
+    <!-- 3. Experiência Profissional -->
+    {% if selected_experiences %}
+      <section>
+        <h2>{{ t("experience") }}</h2>
+        {% for exp in selected_experiences %}
+          <div class="item-block">
+            <div class="item-header">
+              <div>
+                <span class="item-role">{{ exp.position_title }}</span>
+                {% if exp.company_name %}
+                  <span class="item-company"> — {{ exp.company_name }}</span>
+                {% endif %}
+              </div>
+              <div class="item-date">
+                {{ exp.start_date | format_date(locale) }} – 
+                {% if exp.is_current %}
+                  {{ t_present }}
+                {% else %}
+                  {{ exp.end_date | format_date(locale) }}
+                {% endif %}
+              </div>
+            </div>
+
+            {% if exp.bullet_points %}
+              <ul class="bullet-list">
+                {% for bp in exp.bullet_points %}
+                  <li>{{ bp }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+
+            {% if exp.tech_stack %}
+              <div class="tech-stack-line">
+                <span class="tech-stack-label">{{ t("skills") }}:</span>
+                {{ exp.tech_stack | join(", ") }}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <!-- 4. Habilidades e Tecnologias -->
+    {% if skills_highlighted %}
+      <section>
+        <h2>{{ t("skills") }}</h2>
+        <div class="skills-cloud">
+          {% for skill in skills_highlighted %}
+            <span class="skill-badge">{{ skill }}</span>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <!-- 5. Formação Acadêmica -->
+    {% if education %}
+      <section>
+        <h2>{{ t("education") }}</h2>
+        {% for edu in education %}
+          <div class="item-block">
+            <div class="item-header">
+              <div>
+                <span class="item-role">{{ edu.degree }}</span>
+                {% if edu.institution %}
+                  <span class="item-company"> — {{ edu.institution }}</span>
+                {% endif %}
+              </div>
+              <div class="item-date">
+                {{ edu.start_date | format_date(locale) }}
+                {% if edu.end_date %}
+                  – {{ edu.end_date | format_date(locale) }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <!-- 6. Certificações -->
+    {% if certifications %}
+      <section>
+        <h2>{{ t("certifications") }}</h2>
+        {% for cert in certifications %}
+          <div class="item-block">
+            <div class="item-header">
+              <div>
+                <span class="item-role">{{ cert.name }}</span>
+                {% if cert.issuer %}
+                  <span class="item-company"> — {{ cert.issuer }}</span>
+                {% endif %}
+              </div>
+              {% if cert.issue_date %}
+                <div class="item-date">{{ cert.issue_date | format_date(locale) }}</div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <!-- 7. Idiomas -->
+    {% if languages %}
+      <section>
+        <h2>{{ t("languages") }}</h2>
+        <div>
+          {% for lang in languages %}
+            <span class="language-item">
+              <strong>{{ lang.language }}:</strong> {{ lang.proficiency or "Fluente" }}
+            </span>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </main>
+
+</body>
+</html>

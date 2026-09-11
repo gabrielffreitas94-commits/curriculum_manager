@@ -13,8 +13,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
+!frontend/src/lib/
 parts/
 sdist/
 var/
@@ -22,6 +23,9 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.db
+*.sqlite
+*.sqlite3
 
 # Testing & Coverage
 .pytest_cache/

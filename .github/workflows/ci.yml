@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # BACKEND CI JOBS (Execução Paralela)
+  # ============================================================================
+  backend-lint:
+    name: "Backend: Linter & Formatter (Ruff)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Ruff Linter
+        run: uv run ruff check .
+
+      - name: Run Ruff Formatter Check
+        run: uv run ruff format --check .
+
+  backend-typecheck:
+    name: "Backend: Type Check (Mypy)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Mypy Static Type Checking
+        run: uv run mypy app
+
+  backend-unit-tests:
+    name: "Backend: Unit Tests (Pytest)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Unit Tests
+        run: uv run pytest tests/unit/ --cov=app/core --cov=app/adapters --cov-report=term-missing
+
+  backend-integration-tests:
+    name: "Backend: Integration Tests (Pytest)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies for WeasyPrint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Integration Tests
+        run: uv run pytest tests/integration/ --cov=app/api --cov=app/services --cov-report=term-missing
+
+  # ============================================================================
+  # FRONTEND CI JOBS (Execução Paralela)
+  # ============================================================================
+  frontend-lint:
+    name: "Frontend: Linter (ESLint)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  frontend-build:
+    name: "Frontend: Production Build (Next.js)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Next.js Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
