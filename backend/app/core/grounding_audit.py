@@ -91,6 +91,8 @@ class GroundingAuditEngine:
     @staticmethod
     def _char_ngram_vector(text: str, n: int = 3) -> dict[str, int]:
         """Extrai vetor de frequência de n-gramas para representação vetorial subpalavra."""
+        if not text:
+            return {}
         vec: dict[str, int] = {}
         if len(text) < n:
             vec[text] = 1

@@ -79,3 +79,48 @@ def test_extensibility_add_custom_locale() -> None:
     assert LocaleRegistry.format_date("2024-11-01", "fr-FR") == "nov. 2024"
     assert LocaleRegistry.format_date(None, "fr-FR", is_current=True) == "Présent"
     assert LocaleRegistry.get_translation("fr-FR", "summary") == "Résumé Professionnel"
+
+
+def test_date_formatting_types_and_edge_cases() -> None:
+    """Valida formatação de datas com objetos date/datetime, strings parciais e fallbacks."""
+    from datetime import date, datetime
+
+    # 1. Objeto datetime
+    dt = datetime(2023, 7, 20, 14, 30)
+    assert LocaleRegistry.format_date(dt, "pt-BR") == "jul/2023"
+    assert LocaleRegistry.format_date(dt, "en-US") == "Jul 2023"
+
+    # 2. Objeto date
+    d = date(2022, 12, 5)
+    assert LocaleRegistry.format_date(d, "pt-BR") == "dez/2022"
+    assert LocaleRegistry.format_date(d, "en-US") == "Dec 2022"
+
+    # 3. String vazia ou apenas espaços
+    assert LocaleRegistry.format_date("", "pt-BR") == ""
+    assert LocaleRegistry.format_date("   ", "pt-BR", is_current=True) == "Atual"
+
+    # 4. Formato YYYY-MM
+    assert LocaleRegistry.format_date("2021-08", "pt-BR") == "ago/2021"
+    assert LocaleRegistry.format_date("2021-08", "en-US") == "Aug 2021"
+
+    # 5. String inválida (deve retornar a string original como fallback amigável)
+    assert LocaleRegistry.format_date("Desde 2020", "pt-BR") == "Desde 2020"
+
+    # 6. Tipo incompatível não esperado (ex: número inteiro)
+    assert LocaleRegistry.format_date(12345, "pt-BR") == ""
+
+
+def test_locale_fallback_and_missing_translations() -> None:
+    """Garante fallback para pt-BR quando o locale não existir e fallback
+    para a chave de tradução.
+    """
+    # Locale não registrado deve retornar configuração padrão pt-BR
+    fallback_config = LocaleRegistry.get("ja-JP")
+    assert fallback_config.code == "pt-BR"
+
+    # Tradução de chave inexistente deve retornar string vazia ou o default informado
+    assert LocaleRegistry.get_translation("pt-BR", "chave_totalmente_inexistente") == ""
+    assert (
+        LocaleRegistry.get_translation("pt-BR", "chave_totalmente_inexistente", default="Fallback")
+        == "Fallback"
+    )

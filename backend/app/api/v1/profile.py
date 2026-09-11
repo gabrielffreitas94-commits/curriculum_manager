@@ -504,6 +504,12 @@ async def delete_language(
         "projetos, skills e idiomas do usuário ativo."
     ),
 )
+@router.get(
+    "/dossier",
+    response_model=FullDossierResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Alias para consulta agregada do dossiê profissional",
+)
 async def get_full_dossier(
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),

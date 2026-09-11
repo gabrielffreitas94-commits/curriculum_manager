@@ -94,6 +94,10 @@ async def update_my_settings(
     if body.default_prompt_skill_id is not None:
         settings.default_prompt_skill_id = body.default_prompt_skill_id
 
+    db.add(settings)
+    await db.commit()
+    await db.refresh(settings)
+
     has_key = bool(settings.encrypted_gemini_api_key)
 
     return UserSettingsResponse(

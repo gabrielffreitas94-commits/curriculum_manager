@@ -260,3 +260,20 @@ async def test_notification_tenant_isolation(
             headers=headers_b,
         )
         assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_mark_notification_not_found_raises_404(
+    async_client: AsyncClient,
+    setup_notif_users: dict,
+) -> None:
+    """Garante 404 ao tentar marcar como lida notificação inexistente."""
+    headers_a = setup_notif_users["headers_a"]
+    fake_notif_id = uuid.uuid4()
+
+    with patch("app.api.v1.deps.auth_adapter.verify_token", return_value=AUTH_USER_A):
+        res = await async_client.patch(
+            f"/api/v1/notifications/{fake_notif_id}/read",
+            headers=headers_a,
+        )
+        assert res.status_code == 404

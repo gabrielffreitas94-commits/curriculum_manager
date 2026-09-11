@@ -38,3 +38,12 @@ async def test_ready_readiness_probe(async_client: AsyncClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_app_lifespan() -> None:
+    """Verifica a execução do lifespan context manager de startup e shutdown."""
+    from app.main import app, lifespan
+
+    async with lifespan(app):
+        pass

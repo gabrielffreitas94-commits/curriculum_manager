@@ -59,13 +59,17 @@ async def sync_user(
             target_title=payload.target_title,
             phone=payload.phone,
             location=payload.location,
+            is_active=True,
         )
+
         db.add(user)
         await db.flush()
 
         settings = UserSettings(
             user_id=user.id,
             preferred_language=payload.preferred_language or "pt-BR",
+            email_notifications_enabled=True,
+            in_app_notifications_enabled=True,
         )
         db.add(settings)
         await db.flush()
@@ -85,6 +89,8 @@ async def sync_user(
             settings = UserSettings(
                 user_id=user.id,
                 preferred_language=payload.preferred_language or "pt-BR",
+                email_notifications_enabled=True,
+                in_app_notifications_enabled=True,
             )
             db.add(settings)
             await db.flush()

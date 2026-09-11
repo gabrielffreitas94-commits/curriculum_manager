@@ -134,6 +134,27 @@ class ResumeService:
         _ACTIVE_GENERATIONS.add(user.id)
 
         try:
+            # Validação prévia de candidatura (fail-fast antes de invocar LLM)
+            application_id = payload.application_id
+            if application_id is None and not payload.create_application:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="ID de candidatura ausente e create_application está desativado.",
+                )
+            if application_id is not None:
+                app_check = await self._db.execute(
+                    select(Application).where(
+                        Application.id == application_id,
+                        Application.user_id == user.id,
+                        Application.deleted_at.is_(None),
+                    )
+                )
+                if not app_check.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Candidatura informada não existe ou pertence a outro usuário.",
+                    )
+
             adapter = self._resolve_gemini_adapter(user)
 
             # 1. Recupera o Dossiê Factual (Grounding Context)
@@ -201,7 +222,6 @@ class ResumeService:
             sanitized_content = self._audit_engine.sanitize(content_dict, audit)
 
             # 5. Vinculação com Candidatura (ATS)
-            application_id = payload.application_id
             if application_id is None and payload.create_application:
                 comp_name = payload.company_name or "Empresa Oportunidade"
                 j_title = payload.job_title or "Cargo Pretendido"
@@ -216,26 +236,8 @@ class ResumeService:
                 self._db.add(new_app)
                 await self._db.flush()
                 application_id = new_app.id
-            elif application_id is not None:
-                # Valida pertencimento do tenant
-                app_check = await self._db.execute(
-                    select(Application).where(
-                        Application.id == application_id,
-                        Application.user_id == user.id,
-                        Application.deleted_at.is_(None),
-                    )
-                )
-                if not app_check.scalar_one_or_none():
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail="Candidatura informada não existe ou pertence a outro usuário.",
-                    )
 
-            if not application_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="ID de candidatura ausente e create_application está desativado.",
-                )
+            assert application_id is not None
 
             # Determina número da versão sequencial
             version_stmt = select(func.coalesce(func.max(GeneratedResume.version_number), 0)).where(
