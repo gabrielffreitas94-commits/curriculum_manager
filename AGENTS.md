@@ -19,6 +19,11 @@ Este repositório possui personas especializadas integradas sob demanda através
 - **Comportamento:** Audita se os testes de segurança eliminam asserções tautológicas, impõem fail-closed, validam encaminhamento de parâmetros em spies e possuem docstrings estruturadas dual-target (para humanos e agentes IA/LLM).
 - **Definição:** [SKILL.md](.agents/skills/security-antiregression-guardrails/SKILL.md)
 
+### 4. Senior SRE & Observability Engineer (`sre-observability-engineer`)
+- **Gatilhos:** "audite os logs e métricas", "configure a observabilidade", "verifique a telemetria desta PR", "analise o rastreamento distribuído", "atue como sre".
+- **Comportamento:** Audita pontos cegos de telemetria, assegura conformidade estrita com OpenTelemetry (OTel) e Google Cloud Logging/Monitoring, bloqueia vazamento de PII em logs e valida métricas de GenAI/LLM Ops e SLOs.
+- **Definição:** [SKILL.md](.agents/skills/sre-observability-engineer/SKILL.md)
+
 ---
 
 ## ⚡ Regra de Roteamento de Personas

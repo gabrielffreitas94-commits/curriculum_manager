@@ -62,3 +62,23 @@ def example_function(param1: str, param2: int) -> bool:
 - **Tipagem Estrita:** Uso de `typing` (ex: `list[str]`, `dict[str, Any]`, `UUID`, `Optional[str]`) em todas as assinaturas.
 - **Linter & Formatação:** `ruff check` e `ruff format` para Python; `eslint` e `prettier` para TypeScript.
 - **Segurança:** Nunca comitar senhas, chaves de API ou segredos. Use `.env` e injeção de variáveis de ambiente.
+
+---
+
+## 5. Padrão Obrigatório de Observabilidade e Telemetria
+
+Todo código novo ou refatorado deve integrar-se nativamente à infraestrutura de observabilidade:
+
+1. **Proibição de `print()` e `console.log()`:**
+   - É terminantemente proibido o uso de `print()` no backend e `console.log()` desestruturado no frontend em código de produção.
+2. **Uso Obrigatório de Logging Estruturado (`structlog`):**
+   - Sempre utilize instâncias de logger estruturado (`structlog.get_logger()`).
+   - Registre eventos em formato chave-valor estruturado: `logger.info("resume_generated", user_id=user_id, duration_ms=elapsed)`.
+   - Nunca concatene strings ou interpole variáveis brutas na mensagem do evento.
+3. **Rastreabilidade de Contexto (`correlation_id`):**
+   - Todos os endpoints e adaptadores devem propagar o `correlation_id` (via `contextvars` no backend e header `X-Correlation-ID` no frontend).
+4. **Proteção Inegociável de PII e Segredos (AppSec & LGPD):**
+   - NUNCA registre em logs chaves de API (`api_key`, `AIza...`), tokens Bearer/JWT, senhas ou documentos pessoais sensíveis (CPF, etc.). Use mascaramento antes do log.
+5. **Telemetria de GenAI (LLM Ops):**
+   - Toda interação com LLMs (Google Gemini) deve registrar: modelo utilizado, latência (ms), consumo de tokens e status da geração.
+
