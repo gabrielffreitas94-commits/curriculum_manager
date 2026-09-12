@@ -279,3 +279,22 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: python scripts/check_security_guardrails.py
 
+  # ============================================================================
+  # ARCHITECTURE GATE (Guardião da Arquitetura Hexagonal & AST Import Checker)
+  # ============================================================================
+  architecture-gate:
+    name: "Architecture Gate: Hexagonal Boundaries & Import Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Enforce Hexagonal Architecture Boundaries
+        run: python scripts/check_hexagonal_architecture.py
+
+

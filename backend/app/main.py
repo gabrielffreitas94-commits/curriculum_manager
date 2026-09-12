@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from app.adapters.gcp_logging_adapter import gcp_cloud_logging_processor
 from app.api.v1.applications import router as applications_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
@@ -40,7 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         None: Contexto de execução enquanto a aplicação permanece ativa.
     """
     # Rotinas de inicialização (startup)
-    setup_logging()
+    setup_logging(cloud_processor=gcp_cloud_logging_processor)
     yield
     # Rotinas de encerramento (shutdown)
 
@@ -51,7 +52,7 @@ def create_application() -> FastAPI:
     Returns:
         FastAPI: Instância totalmente configurada pronta para execução.
     """
-    setup_logging()
+    setup_logging(cloud_processor=gcp_cloud_logging_processor)
 
     openapi_url = (
         f"{settings.API_V1_STR}/openapi.json" if settings.ENVIRONMENT != "production" else None
