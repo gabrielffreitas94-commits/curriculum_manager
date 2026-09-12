@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.v1.applications import router as applications_router
 from app.api.v1.auth import router as auth_router
@@ -18,6 +20,7 @@ from app.api.v1.profile import router as profile_router
 from app.api.v1.resumes import router as resumes_router
 from app.api.v1.users import router as users_router
 from app.core.config import settings
+from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 
 
 @asynccontextmanager
@@ -62,6 +65,11 @@ def create_application() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Configuração de Rate Limiting (SlowAPI)
+    application.state.limiter = limiter
+    application.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    application.add_middleware(SlowAPIMiddleware)
 
     # Registro de rotas de diagnóstico globais (Cloud Run)
     application.include_router(health_router)

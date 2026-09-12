@@ -8,6 +8,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import Request
 
 from app.api.v1.notifications import (
     get_notification_service,
@@ -132,10 +133,13 @@ async def test_resumes_router_direct(mock_user: User) -> None:
     assert get_resume_service(db=db) is not None
 
     desc = "Descrição da oportunidade profissional com requisitos para teste."
+    mock_request = MagicMock(spec=Request)
+    mock_request.client = MagicMock(host="127.0.0.1")
 
     # analyze_job
     resume_service.analyze_job = AsyncMock(return_value={"job_title": "Dev"})
     res_an = await analyze_job(
+        request=mock_request,
         body=JobAnalyzeRequest(job_description=desc),
         current_user=mock_user,
         service=resume_service,
@@ -145,6 +149,7 @@ async def test_resumes_router_direct(mock_user: User) -> None:
     # match_preview
     resume_service.match_preview = AsyncMock(return_value={"match_percentage": 90.0})
     res_mp = await match_preview(
+        request=mock_request,
         body=MatchPreviewRequest(job_description=desc),
         current_user=mock_user,
         service=resume_service,
@@ -154,6 +159,7 @@ async def test_resumes_router_direct(mock_user: User) -> None:
     # generate_resume
     resume_service.generate_resume = AsyncMock(return_value={"resume_id": uuid.uuid4()})
     res_gen = await generate_resume(
+        request=mock_request,
         body=ResumeGenerateRequest(job_description=desc),
         current_user=mock_user,
         service=resume_service,

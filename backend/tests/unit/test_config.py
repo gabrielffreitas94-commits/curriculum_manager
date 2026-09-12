@@ -210,3 +210,11 @@ def test_settings_singleton_properties() -> None:
     assert settings.STORAGE_PROVIDER == "supabase"
     assert settings.DATABASE_URL.startswith("sqlite")
     assert isinstance(settings.MASTER_ENCRYPTION_KEY, str)
+
+
+def test_settings_rate_limit_properties() -> None:
+    """Verifica se os atributos de Rate Limiting padrão estão configurados."""
+    assert settings.RATE_LIMIT_ENABLED is True
+    assert settings.RATE_LIMIT_ANALYZE_JOB == "10/minute"
+    assert settings.RATE_LIMIT_MATCH_PREVIEW == "10/minute"
+    assert settings.RATE_LIMIT_GENERATE == "5/minute"

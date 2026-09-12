@@ -62,6 +62,10 @@ async def async_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, 
         AsyncClient: Instância do cliente HTTP para disparo de requisições de teste.
     """
 
+    from app.core.rate_limit import limiter
+
+    limiter.reset()
+
     async def override_get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
@@ -70,3 +74,4 @@ async def async_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
+    limiter.reset()

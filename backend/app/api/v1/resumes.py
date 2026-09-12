@@ -3,7 +3,7 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import get_current_user, get_document_service
@@ -14,7 +14,9 @@ from app.api.v1.schemas.resume import (
     ResumeGenerateRequest,
     ResumeGenerateResponse,
 )
+from app.core.config import settings
 from app.core.database import get_db_session
+from app.core.rate_limit import limiter
 from app.domain.models import User
 from app.ports.ai_port import JobAnalysisResult
 from app.services.document_service import DocumentService
@@ -38,7 +40,9 @@ def get_resume_service(db: AsyncSession = Depends(get_db_session)) -> ResumeServ
         "desejáveis e palavras-chave ATS."
     ),
 )
+@limiter.limit(settings.RATE_LIMIT_ANALYZE_JOB)
 async def analyze_job(
+    request: Request,
     body: JobAnalyzeRequest,
     current_user: User = Depends(get_current_user),
     service: ResumeService = Depends(get_resume_service),
@@ -53,7 +57,9 @@ async def analyze_job(
     summary="Avalia fit e aderência semântica contra a vaga",
     description="Calcula a pontuação de match e sugere palavras-chave antes de gerar o currículo.",
 )
+@limiter.limit(settings.RATE_LIMIT_MATCH_PREVIEW)
 async def match_preview(
+    request: Request,
     body: MatchPreviewRequest,
     current_user: User = Depends(get_current_user),
     service: ResumeService = Depends(get_resume_service),
@@ -71,7 +77,9 @@ async def match_preview(
         "geração estruturada e auditoria algorítmica anti-alucinação."
     ),
 )
+@limiter.limit(settings.RATE_LIMIT_GENERATE)
 async def generate_resume(
+    request: Request,
     body: ResumeGenerateRequest,
     current_user: User = Depends(get_current_user),
     service: ResumeService = Depends(get_resume_service),

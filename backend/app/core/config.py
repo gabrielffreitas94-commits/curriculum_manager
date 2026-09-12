@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     MASTER_ENCRYPTION_KEY: str = INSECURE_DEFAULT_ENCRYPTION_KEY
     STORAGE_PROVIDER: str = "supabase"
 
+    # Configurações de Rate Limiting (SlowAPI) contra DoS e esgotamento de quota de IA
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_ANALYZE_JOB: str = "10/minute"
+    RATE_LIMIT_MATCH_PREVIEW: str = "10/minute"
+    RATE_LIMIT_GENERATE: str = "5/minute"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
