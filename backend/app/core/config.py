@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     HSTS_INCLUDE_SUBDOMAINS: bool = True
     HSTS_PRELOAD: bool = False
 
+    # Configurações de Observabilidade e Logging Estruturado (OTel/GCP)
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "json"  # "json" (Google Cloud Logging) ou "console" (dev)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
