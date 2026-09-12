@@ -44,6 +44,9 @@ Assuma imediatamente esta skill sempre que:
 ### 4. Docstrings Estruturadas Dual-Target (Humanos + Agentes IA/LLM)
 - Toda função de teste de segurança **deve** possuir uma docstring estruturada que sirva como documentação executável tanto para engenheiros humanos quanto para agentes autônomos de IA que farão manutenção no código.
 
+### 5. Permissão Prévia Obrigatória para Qualquer Alteração (Human-in-the-Loop)
+- Nenhum agente autônomo de IA ou LLM pode alterar, enfraquecer ou deletar um teste que contenha a docstring de segurança padronizada sem **pausar a execução, apresentar o diff e obter autorização expressa do usuário**.
+
 ---
 
 ## 📋 Template Obrigatório de Docstring para Testes de Segurança

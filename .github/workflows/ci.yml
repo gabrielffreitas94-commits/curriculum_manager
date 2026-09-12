@@ -254,3 +254,28 @@ jobs:
       - name: Enforce Frontend 100% Coverage Gate
         working-directory: frontend
         run: npm run test:coverage
+
+  # ============================================================================
+  # SECURITY GUARDRAILS GATE (Proteção Anti-Regressão de Testes de Segurança)
+  # ============================================================================
+  security-guardrails-gate:
+    name: "Security Gate: Anti-Regression Guardrail Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Enforce Security Guardrails Integrity
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: python scripts/check_security_guardrails.py
+
