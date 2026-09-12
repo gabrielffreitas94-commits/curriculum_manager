@@ -116,14 +116,20 @@ async def test_document_service_export_pdf_and_docx_success(
 def test_document_service_autoescape_enabled_for_jinja2_template() -> None:
     """Valida que o ambiente Jinja2 do DocumentService ativa autoescape para templates .jinja2.
 
-    IMPORTÂNCIA DE SEGURANÇA (Prevenção de Regressão Crítica):
-    Por padrão, select_autoescape(["html", "xml"]) inspeciona a extensão final do arquivo.
-    Como os templates de currículo ATS usam a extensão '.jinja2' (ex: 'resume_ats.html.jinja2'),
-    se a string "jinja2" não estiver explicitamente incluída na lista de autoescape, o Jinja2
-    desativa o escape automático silenciosamente por omissão.
-    Isso permitiria que dados fornecidos pelo usuário (como experiências, resumo ou links)
-    injetassem tags HTML (<script>, <iframe>, <img src=...>) diretamente no documento.
-    Este teste garante que futuras alterações no Environment do Jinja2 não removam a proteção.
+    VETOR DE AMEAÇA:
+    - OWASP A03:2021 (Injection / XSS / CWE-79).
+    - Impacto: Injeção de tags HTML (<script>, <iframe>, <img src=...>) nos documentos PDF.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O ambiente Jinja2 DEVE ativar autoescape estrito para extensões .html, .xml e .jinja2.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Por padrão, select_autoescape(["html", "xml"]) só checa .html e .xml. Como o template ATS
+      usa a extensão '.jinja2', omitir "jinja2" da lista desliga o autoescape silenciosamente.
+      Um desenvolvedor ou agente IA poderia supor que .html.jinja2 é coberto por 'html'.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Testa o retorno direto de autoescape('resume_ats.html.jinja2') como True imutável.
     """
     service = DocumentService(db=MagicMock())
     assert service.jinja_env.autoescape("resume_ats.html.jinja2") is True
@@ -136,7 +142,24 @@ async def test_document_service_export_pdf_sanitizes_html_injection(
     db_session: AsyncSession,
     doc_user: User,
 ) -> None:
-    """Garante que tags HTML injetadas no resumo ou dados do candidato sejam escapadas no PDF."""
+    """Garante que tags HTML injetadas no resumo ou dados do candidato sejam escapadas no PDF.
+
+    VETOR DE AMEAÇA:
+    - OWASP A03:2021 (Injection / CWE-79) & OWASP A10:2021 (SSRF / CWE-918).
+    - Impacto: Execução de scripts no renderizador ou requisições maliciosas em segundo plano.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - Qualquer entrada contendo caracteres especiais (<, >, ") DEVE ser convertida em entidades
+      HTML seguras (&lt;, &gt;, &quot;) antes de ser repassada ao renderizador PDF.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - O uso de filtros |safe em templates Jinja2 ou desativação de autoescape em blocos
+      reabriria a vulnerabilidade de injeção direta sem quebrar a compilação do PDF.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Inspeciona o HTML bruto gerado e transmitido ao WeasyPrint garantindo a presença estrita
+      de entidades escapadas (&lt;script&gt;) e ausência total de tags brutas (<script>).
+    """
     db_session.add(doc_user)
     await db_session.flush()
 
