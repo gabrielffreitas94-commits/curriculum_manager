@@ -20,16 +20,23 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "api_key",
         "apikey",
         "password",
+        "hashed_password",
         "secret",
-        "token",
-        "authorization",
-        "master_encryption_key",
-        "gemini_api_key",
         "client_secret",
+        "token",
+        "id_token",
         "access_token",
         "refresh_token",
+        "authorization",
+        "bearer",
+        "master_encryption_key",
+        "gemini_api_key",
+        "encrypted_api_key",
         "private_key",
         "credential",
+        "supabase_key",
+        "service_role_key",
+        "database_url",
     }
 )
 
@@ -108,9 +115,27 @@ def gcp_severity_processor(
     method_name: str,
     event_dict: dict[str, Any],
 ) -> dict[str, Any]:
-    """Mapeia o nível de log para o campo 'severity' padrão do Google Cloud Logging."""
+    """Processador de infraestrutura para compatibilidade com Google Cloud Logging.
+
+    Mapeia a severidade para o padrão GCP ('severity') e sintetiza o objeto
+    estruturado 'httpRequest' caso atributos neutros de requisição HTTP estejam presentes.
+    """
     level = event_dict.get("level", "info").lower()
     event_dict["severity"] = GCP_SEVERITY_MAP.get(level, "DEFAULT")
+
+    # Síntese do bloco nativo httpRequest do GCP a partir de atributos HTTP neutros (OTel)
+    if "http_method" in event_dict and "status_code" in event_dict:
+        duration_ms = event_dict.get("duration_ms", 0.0)
+        url_val = event_dict.get("url") or event_dict.get("path", "")
+        event_dict["httpRequest"] = {
+            "requestMethod": event_dict["http_method"],
+            "requestUrl": str(url_val),
+            "status": event_dict["status_code"],
+            "latency": f"{duration_ms / 1000:.4f}s",
+            "userAgent": event_dict.get("user_agent", ""),
+            "remoteIp": event_dict.get("remote_ip", ""),
+        }
+
     return event_dict
 
 

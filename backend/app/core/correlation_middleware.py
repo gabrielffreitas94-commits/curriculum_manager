@@ -59,23 +59,15 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         response.headers["X-Correlation-ID"] = correlation_id
 
-        # Mapeamento do objeto estruturado nativo httpRequest para o Google Cloud Run
-        gcp_http_request: dict[str, Any] = {
-            "requestMethod": request.method,
-            "requestUrl": str(request.url),
-            "status": response.status_code,
-            "latency": f"{duration_ms / 1000:.4f}s",
-            "userAgent": request.headers.get("user-agent", ""),
-            "remoteIp": request.client.host if request.client else "",
-        }
-
-        # Emissão de log proporcional à criticidade do status HTTP
+        # Emissão de log proporcional à criticidade do status HTTP (campos neutros OTel)
         log_kwargs: dict[str, Any] = {
             "http_method": request.method,
             "path": request.url.path,
+            "url": str(request.url),
             "status_code": response.status_code,
             "duration_ms": duration_ms,
-            "httpRequest": gcp_http_request,
+            "user_agent": request.headers.get("user-agent", ""),
+            "remote_ip": request.client.host if request.client else "",
         }
 
         if response.status_code >= 500:

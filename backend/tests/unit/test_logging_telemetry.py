@@ -42,8 +42,82 @@ def test_telemetry_contextvars_lifecycle():
     assert get_user_id() is None
 
 
+@pytest.mark.parametrize(
+    "project_sensitive_key",
+    [
+        "api_key",
+        "gemini_api_key",
+        "encrypted_api_key",
+        "master_encryption_key",
+        "password",
+        "hashed_password",
+        "token",
+        "id_token",
+        "access_token",
+        "refresh_token",
+        "authorization",
+        "client_secret",
+        "private_key",
+        "supabase_key",
+        "service_role_key",
+        "database_url",
+    ],
+)
+def test_pii_scrubber_masks_all_project_sensitive_keys(project_sensitive_key: str):
+    """Valida que todas as chaves sensíveis do projeto são estritamente ofuscadas no log.
+
+    VETOR DE AMEAÇA:
+    - OWASP A09:2021 — Security Logging and Monitoring Failures.
+    - CWE-532: Insertion of Sensitive Information into Log File.
+    - LGPD (Lei 13.709/2018) Art. 46: Vazamento de segredos e credenciais em logs de telemetria.
+    - Impacto Potencial: Exposição inadvertida da chave mestre AES-GCM, chaves Gemini (BYOK),
+      hashes de senhas ou tokens de sessão JWT a operadores de telemetria ou invasores com acesso
+      aos agregadores de logs do Google Cloud.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - Qualquer evento de log que contenha uma chave confidencial do sistema deve ter seu valor
+      substituído incondicionalmente pela constante literal "[REDACTED]".
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - É terminantemente proibido afrouxar a lista SENSITIVE_KEYS ou assumir que certas chaves
+      (ex: encrypted_api_key ou master_encryption_key) não precisam de sanitização por já estarem
+      em base64 ou cifradas. A exposição de qualquer segredo estruturado viola o princípio da
+      defesa em profundidade.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - O teste valida contra o oráculo imutável "[REDACTED]", rejeitando asserções tautológicas
+      ou condicionais permissivas.
+    """
+    secret_value = "super-confidential-credential-xyz"
+    event = {
+        "event": "audit_probe",
+        project_sensitive_key: secret_value,
+    }
+
+    scrubbed = pii_and_secrets_scrubber(None, "info", event)
+
+    assert scrubbed[project_sensitive_key] == "[REDACTED]"
+    assert secret_value not in str(scrubbed)
+
+
 def test_pii_scrubber_masks_sensitive_keys():
-    """Valida que atributos sensíveis têm seus valores ofuscados com [REDACTED]."""
+    """Valida que atributos sensíveis têm seus valores ofuscados com [REDACTED].
+
+    VETOR DE AMEAÇA:
+    - OWASP A09:2021 — Security Logging and Monitoring Failures.
+    - Impacto Potencial: Vazamento de tokens de autenticação e segredos de clientes em logs.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - Atributos que contenham substrings confidenciais devem ser ofuscados para "[REDACTED]",
+      mantendo apenas campos seguros inalterados.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Um refactor não deve utilizar regex permissivo que apenas substitua chaves completas
+      ou falhe em chaves com prefixos/sufixos (ex: client_secret ou gemini_api_key).
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Asserção direta e literal contra o valor esperado de segurança "[REDACTED]".
+    """
     event = {
         "event": "login_attempt",
         "api_key": "AIzaSySecretApiKey123456789012345678",
@@ -65,7 +139,26 @@ def test_pii_scrubber_masks_sensitive_keys():
 
 
 def test_pii_scrubber_detects_patterns_in_values():
-    """Valida detecção de padrões de chaves Gemini, JWT e Bearer em strings não mapeadas."""
+    """Valida detecção de padrões de chaves Gemini, JWT e Bearer em strings não mapeadas.
+
+    VETOR DE AMEAÇA:
+    - OWASP A09:2021 — Security Logging and Monitoring Failures.
+    - Impacto Potencial: Vazamento acidental de tokens JWT e chaves Gemini inseridos em
+      mensagens de erro ou dumps genéricos com chaves não listadas em SENSITIVE_KEYS.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - Valores contendo padrões de chaves do Gemini ("AIzaSy...") devem ser ofuscados para
+      "[REDACTED_GEMINI_KEY]", tokens JWT para "[REDACTED_JWT]" e cabeçalhos Bearer para
+      "Bearer [REDACTED]", inclusive em estruturas aninhadas (dicionários e listas).
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Otimizações de desempenho prematuras que removam a varredura regex profunda em strings
+      ou objetos aninhados reabrem vulnerabilidades de vazamento de chaves em traces de exceções.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Verificação de ausência absoluta da chave original e presença estrita dos marcadores de
+      redação em todas as camadas da estrutura de dados.
+    """
     gemini_key = "AIzaSyB12345678901234567890123456789012"
     jwt_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.doNotLeakThis"
     bearer_header = "Bearer some-long-token-value"
@@ -140,3 +233,29 @@ def test_setup_logging_and_get_logger():
     assert logger is not None
     # Executa sem exceções
     logger.info("unit_test_log_event", status="ok", count=1)
+
+
+def test_gcp_cloud_logging_synthesizes_http_request():
+    """Valida que o processador GCP sintetiza o bloco httpRequest a partir de campos neutros."""
+    event = {
+        "event": "http_request_finished",
+        "level": "info",
+        "http_method": "POST",
+        "status_code": 201,
+        "path": "/api/v1/resumes",
+        "duration_ms": 150.5,
+        "user_agent": "Mozilla/5.0",
+        "remote_ip": "192.168.1.1",
+    }
+
+    processed = gcp_severity_processor(None, "info", event)
+
+    assert processed["severity"] == "INFO"
+    assert "httpRequest" in processed
+    http_req = processed["httpRequest"]
+    assert http_req["requestMethod"] == "POST"
+    assert http_req["requestUrl"] == "/api/v1/resumes"
+    assert http_req["status"] == 201
+    assert http_req["latency"] == "0.1505s"
+    assert http_req["userAgent"] == "Mozilla/5.0"
+    assert http_req["remoteIp"] == "192.168.1.1"
