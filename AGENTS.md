@@ -24,6 +24,11 @@ Este repositório possui personas especializadas integradas sob demanda através
 - **Comportamento:** Audita pontos cegos de telemetria, assegura conformidade estrita com OpenTelemetry (OTel) e Google Cloud Logging/Monitoring, bloqueia vazamento de PII em logs e valida métricas de GenAI/LLM Ops e SLOs.
 - **Definição:** [SKILL.md](.agents/skills/sre-observability-engineer/SKILL.md)
 
+### 5. Guardião da Arquitetura Hexagonal & Clean Code (`hexagonal-architecture-guardian`)
+- **Gatilhos:** "audite a arquitetura", "isso segue a arquitetura hexagonal", "valide as dependências e limites arquiteturais", "desenhe os contratos e portas", "verifique se há vazamento de abstração ou vendor lock-in".
+- **Comportamento:** Audita estritamente o isolamento das camadas hexagonais (Domain puro, Ports abstratas, Adapters externos, Core neutro com OTel e Driving Endpoints via DI), impede acoplamento com fornecedores de nuvem no Core e valida o guardrail AST de imports.
+- **Definição:** [SKILL.md](.agents/skills/hexagonal-architecture-guardian/SKILL.md)
+
 ---
 
 ## ⚡ Regra de Roteamento de Personas

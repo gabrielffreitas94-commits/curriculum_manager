@@ -11,12 +11,8 @@ from typing import Any
 
 import structlog
 
-from app.adapters.gcp_logging_adapter import gcp_cloud_logging_processor
 from app.core.config import settings
 from app.core.telemetry import get_correlation_id, get_user_id
-
-# Alias para compatibilidade retroativa
-gcp_severity_processor = gcp_cloud_logging_processor
 
 # Chaves de atributos que devem ter seus valores automaticamente ofuscados
 SENSITIVE_KEYS: frozenset[str] = frozenset(
@@ -103,20 +99,31 @@ def inject_telemetry_context(
     return event_dict
 
 
-def setup_logging() -> None:
-    """Configura o pipeline de logging estruturado da aplicação."""
+def setup_logging(cloud_processor: Any | None = None) -> None:
+    """Configura o pipeline de logging estruturado da aplicação.
+
+    Args:
+        cloud_processor: Processador opcional de infraestrutura de nuvem (ex: GCP, AWS).
+    """
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
 
     shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         inject_telemetry_context,
         structlog.stdlib.add_log_level,
-        gcp_severity_processor,
-        structlog.processors.TimeStamper(fmt="iso", utc=True, key="timestamp"),
-        pii_and_secrets_scrubber,
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
     ]
+
+    if cloud_processor is not None:
+        shared_processors.append(cloud_processor)
+
+    shared_processors.extend(
+        [
+            structlog.processors.TimeStamper(fmt="iso", utc=True, key="timestamp"),
+            pii_and_secrets_scrubber,
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+        ]
+    )
 
     if settings.LOG_FORMAT.lower() == "console" and settings.ENVIRONMENT == "development":
         final_renderer: Any = structlog.dev.ConsoleRenderer()

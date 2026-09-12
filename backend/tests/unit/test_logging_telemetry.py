@@ -2,8 +2,8 @@
 
 import pytest
 
+from app.adapters.gcp_logging_adapter import gcp_cloud_logging_processor as gcp_severity_processor
 from app.core.logging import (
-    gcp_severity_processor,
     get_logger,
     inject_telemetry_context,
     pii_and_secrets_scrubber,
