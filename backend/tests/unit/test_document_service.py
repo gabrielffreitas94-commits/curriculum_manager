@@ -114,7 +114,17 @@ async def test_document_service_export_pdf_and_docx_success(
 
 
 def test_document_service_autoescape_enabled_for_jinja2_template() -> None:
-    """Valida que o ambiente Jinja2 do DocumentService ativa autoescape para .jinja2."""
+    """Valida que o ambiente Jinja2 do DocumentService ativa autoescape para templates .jinja2.
+
+    IMPORTÂNCIA DE SEGURANÇA (Prevenção de Regressão Crítica):
+    Por padrão, select_autoescape(["html", "xml"]) inspeciona a extensão final do arquivo.
+    Como os templates de currículo ATS usam a extensão '.jinja2' (ex: 'resume_ats.html.jinja2'),
+    se a string "jinja2" não estiver explicitamente incluída na lista de autoescape, o Jinja2
+    desativa o escape automático silenciosamente por omissão.
+    Isso permitiria que dados fornecidos pelo usuário (como experiências, resumo ou links)
+    injetassem tags HTML (<script>, <iframe>, <img src=...>) diretamente no documento.
+    Este teste garante que futuras alterações no Environment do Jinja2 não removam a proteção.
+    """
     service = DocumentService(db=MagicMock())
     assert service.jinja_env.autoescape("resume_ats.html.jinja2") is True
     assert service.jinja_env.autoescape("test.html") is True
@@ -155,6 +165,7 @@ async def test_document_service_export_pdf_sanitizes_html_injection(
                 "location": "<iframe src='evil.html'>",
                 "links": {"site": "<a href='evil'>evil</a>"},
             },
+            # Payload poliglota: valida neutralização de SSRF (src) e XSS inline (onerror=alert(1))
             "professional_summary": "<img src='http://169.254.169.254/secret' onerror='alert(1)'>",
             "selected_experiences": [
                 {
