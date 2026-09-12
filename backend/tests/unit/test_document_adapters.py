@@ -119,11 +119,19 @@ def test_weasyprint_adapter_raises_when_missing_deps() -> None:
 def test_blocked_url_fetcher_prevents_ssrf_and_lfi() -> None:
     """Garante que o blocked_url_fetcher bloqueie tentativas de SSRF e LFI.
 
-    Documentação Executável (Contrato de Segurança):
-    Mesmo que o blocked_url_fetcher levante ValueError incondicionalmente (fail-closed),
-    este teste expressa formalmente os vetores de ameaça que a função se propõe a mitigar.
-    Garante que tentativas com esquemas file:// (LFI) e http:// (SSRF) sejam bloqueadas
-    com a mensagem esperada pelos sistemas de monitoramento/SIEM.
+    VETOR DE AMEAÇA:
+    - OWASP A10:2021 (SSRF / CWE-918) & OWASP A03:2021 (LFI / CWE-22).
+    - Impacto: Tentativas de leitura de metadados da nuvem (169.254.169.254) ou arquivos do host.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O interceptor DEVE levantar ValueError incondicionalmente para qualquer URI externo ou local.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Desenvolvedores ou agentes de IA poderiam tentar criar uma "whitelist" por regex ou liberar
+      certos esquemas, introduzindo vulnerabilidades de DNS Rebinding ou redirecionamentos 302.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Valida o bloqueio estrito contra vetores file:// e http:// e assere a mensagem de erro.
     """
     from app.adapters.weasyprint_adapter import blocked_url_fetcher
 
@@ -166,12 +174,22 @@ def test_weasyprint_adapter_custom_url_fetcher() -> None:
 def test_weasyprint_adapter_never_uses_default_url_fetcher() -> None:
     """Garante que a inicialização padrão NUNCA recorra ao default_url_fetcher do WeasyPrint.
 
-    ALERTA DE SEGURANÇA (Vulnerabilidade SSRF/LFI):
-    O WeasyPrint possui um comportamento padrão perigoso: se 'url_fetcher' for None,
-    ele utiliza internamente o 'weasyprint.default_url_fetcher', que abre conexões
-    de rede HTTP (SSRF) e lê arquivos do sistema de arquivos via file:// (LFI).
-    Este teste blinda a aplicação contra qualquer refatoração que tente definir
-    o url_fetcher como None ou delegar para o fetcher nativo inseguro.
+    VETOR DE AMEAÇA:
+    - OWASP A10:2021 (SSRF / CWE-918) & OWASP A03:2021 (LFI / CWE-22).
+    - Impacto: Acesso a credenciais de nuvem (169.254.169.254) ou segredos (/etc/passwd, .env).
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O adaptador padrão DEVE inicializar com o interceptor blocked_url_fetcher.
+    - Qualquer tentativa de renderização com url_fetcher ausente ou default é proibida.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - O WeasyPrint ativa silenciosamente o weasyprint.default_url_fetcher quando url_fetcher é None.
+    - Um desenvolvedor ou agente IA poderia supor que url_fetcher=None desativa requisições,
+      quando na realidade ativa o comportamento oposto (permite requisições de rede irrestritas).
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Compara diretamente com a referência da função blocked_url_fetcher e rejeita
+      explicitamente mock_wp.default_url_fetcher e None.
     """
     adapter = WeasyPrintAdapter()
 
