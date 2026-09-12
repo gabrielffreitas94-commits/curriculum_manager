@@ -196,7 +196,22 @@ async def test_auth_sync_real_rs256_token_integration(
 async def test_auth_sync_forged_rs256_token_returns_401(
     async_client: AsyncClient,
 ) -> None:
-    """Garante que requisições HTTP com JWT forjado recebam HTTP 401 Unauthorized."""
+    """Garante que requisições HTTP com JWT forjado recebam HTTP 401 Unauthorized.
+
+    VETOR DE AMEAÇA:
+    - OWASP A07:2021 (Broken Authentication) / CWE-287.
+    - Impacto: Acesso indevido a endpoints da API através de tokens forjados externamente.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - A API DEVE interceptar o token com assinatura inválida e retornar status HTTP 401.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Se o middleware ou dependência get_current_user ignorar erros de assinatura ou engolir
+      exceções retornando usuário anônimo ou padrão, a rota seria indevidamente acessível.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Envia requisição HTTP real com JWT assinado por chave invasora e assere status_code == 401.
+    """
     import time
 
     import jwt

@@ -24,7 +24,22 @@ def test_encryption_and_decryption_success() -> None:
 
 
 def test_tampered_ciphertext_detection() -> None:
-    """Garante que qualquer adulteração no texto cifrado ou tag de autenticação falhe."""
+    """Garante que qualquer adulteração no texto cifrado ou tag de autenticação falhe.
+
+    VETOR DE AMEAÇA:
+    - OWASP A02:2021 (Cryptographic Failures) / CWE-353 (Missing Support for Integrity Check).
+    - Impacto: Modificação maliciosa de dados criptografados em repouso (chaves API ou tokens).
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O algoritmo AES-256-GCM DEVE validar a tag de autenticação e rejeitar payloads adulterados.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Migrar de AES-GCM (cifragem autenticada) para modos não autenticados (ex: AES-CBC sem HMAC)
+      permitiria ataques de bit-flipping e padding oracle sem detecção de integridade.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Modifica propositalmente os bytes do ciphertext e assere lançamento de DecryptionError.
+    """
     master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     service = CryptoService(master_key_base64=master_key)
 
@@ -39,7 +54,22 @@ def test_tampered_ciphertext_detection() -> None:
 
 
 def test_wrong_key_decryption_failure() -> None:
-    """Garante que tentar decifrar com uma chave mestra diferente levante DecryptionError."""
+    """Garante que tentar decifrar com uma chave mestra diferente levante DecryptionError.
+
+    VETOR DE AMEAÇA:
+    - OWASP A02:2021 (Cryptographic Failures) / CWE-327.
+    - Impacto: Tentativa de descriptografia cruzada ou uso de chaves não autorizadas.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - Qualquer chave diferente da utilizada na cifragem DEVE falhar imediatamente.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Erros no tratamento de exceções de decifragem que retornem strings vazias ou nulas
+      em vez de levantar exceção de domínio permitiriam estado inconsistente na aplicação.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Cifra com service_a e assere que service_b (chave diferente) levanta DecryptionError.
+    """
     key_a = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     key_b = "YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk="
 
