@@ -38,7 +38,10 @@ def is_override_granted() -> bool:
     if not commit_msg:
         try:
             commit_msg = subprocess.check_output(
-                ["git", "log", "-1", "--pretty=%B"], text=True
+                ["git", "log", "-1", "--pretty=%B"],
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except Exception:
             pass
@@ -90,12 +93,16 @@ def check_guardrails() -> int:
             "backend/tests/",
             "frontend/",
         ]
-        diff_output = subprocess.check_output(diff_cmd, text=True, stderr=subprocess.DEVNULL)
+        diff_output = subprocess.check_output(
+            diff_cmd, text=True, encoding="utf-8", errors="replace", stderr=subprocess.DEVNULL
+        )
     except subprocess.CalledProcessError:
         # Se falhar (ex: shallow clone sem base), tenta diff direto com HEAD~1
         try:
             diff_cmd = ["git", "diff", "-U3", "HEAD~1", "--", "backend/tests/", "frontend/"]
-            diff_output = subprocess.check_output(diff_cmd, text=True, stderr=subprocess.DEVNULL)
+            diff_output = subprocess.check_output(
+                diff_cmd, text=True, encoding="utf-8", errors="replace", stderr=subprocess.DEVNULL
+            )
         except Exception as exc:
             print(f"⚠️ [SECURITY GATE] Não foi possível obter git diff ({exc}). Prosseguindo com cautela.")
             return 0
