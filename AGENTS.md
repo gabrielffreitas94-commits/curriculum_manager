@@ -23,3 +23,21 @@ Este repositório possui personas especializadas integradas sob demanda através
 
 ## ⚡ Regra de Roteamento de Personas
 Sempre que uma solicitação do usuário coincidir com os gatilhos acima, o agente deve carregar e seguir integralmente a persona correspondente, adotando seu protocolo de análise e seu formato obrigatório de relatório.
+
+---
+
+## 🔒 Regra Inviolável de Proteção de Testes de Segurança (Permissão Obrigatória)
+
+**ATENÇÃO AGENTES DE IA E MODELOS LLM:**
+É **TERMINANTEMENTE PROIBIDO** modificar, refatorar, renomear, afrouxar asserções ou deletar qualquer função de teste que contenha as marcações de docstring de segurança padronizadas (`VETOR DE AMEAÇA:` ou `PREMISSA DO GUARDRAIL`), **a menos que o usuário dê permissão prévia explícita**.
+
+### Protocolo de Execução Obrigatório para a IA:
+Se durante qualquer tarefa (refatoração, correção de bug, otimização ou expansão de features) a IA identificar que precisa alterar uma linha de código dentro de um teste de segurança protegido por guardrail:
+1. **PARE IMEDIATAMENTE** antes de executar qualquer ferramenta de edição de arquivo (`replace_file_content`, `write_to_file`, etc.).
+2. **APRESENTE AO USUÁRIO:**
+   - O arquivo e o nome do teste protegido afetado.
+   - O trecho exato que se pretende alterar (diff proposto).
+   - A justificativa técnica: por que essa alteração é necessária e se ela altera o contrato de segurança original.
+3. **PEÇA AUTORIZAÇÃO EXPLÍCITA:** Pergunte diretamente ao usuário: *"Você autoriza a alteração deste teste de segurança protegido por guardrail?"*.
+4. **AGUARDE A RESPOSTA:** Somente prossiga se o usuário responder expressamente autorizando a alteração. Caso contrário, mantenha o teste estritamente intacto e busque outra solução na implementação.
+
