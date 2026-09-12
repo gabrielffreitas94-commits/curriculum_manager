@@ -19,6 +19,8 @@ vi.mock("@/lib/api", () => ({
     previewMatch: vi.fn(),
     generateResume: vi.fn(),
     getExportUrl: vi.fn((id: string, fmt: string) => `/api/v1/resumes/${id}/export/${fmt}`),
+    exportResumeBlob: vi.fn(),
+    downloadExport: vi.fn(),
   },
 }));
 
