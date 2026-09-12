@@ -19,6 +19,7 @@ from app.ports.auth_port import AuthError, AuthUser, InvalidTokenError
 
 if TYPE_CHECKING:
     from app.services.document_service import DocumentService
+    from app.services.user_service import UserService
 
 # Instância do adaptador de autenticação
 auth_adapter = FirebaseAuthAdapter()
@@ -106,3 +107,19 @@ async def get_document_service(
     from app.services.document_service import DocumentService
 
     return DocumentService(db=db)
+
+
+async def get_user_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> "UserService":
+    """Injeta uma instância ativa de UserService com a sessão de banco do request.
+
+    Args:
+        db: Sessão de banco de dados ativa.
+
+    Returns:
+        UserService pronto para uso.
+    """
+    from app.services.user_service import UserService
+
+    return UserService(db=db, auth_port=auth_adapter)

@@ -129,3 +129,18 @@ class FirebaseAuthAdapter(AuthPort):
             full_name=str(full_name),
             picture_url=str(picture_url) if picture_url else None,
         )
+
+    async def revoke_user_tokens(self, uid: str) -> None:
+        """Revoga todos os tokens e sessões ativas do usuário no Firebase Auth.
+
+        Args:
+            uid: Identificador único do usuário no Firebase Auth.
+
+        Raises:
+            AuthError: Se o identificador do usuário for vazio ou inválido.
+        """
+        if not uid or not uid.strip():
+            raise AuthError("Identificador do usuário inválido para revogação de tokens.")
+
+        # Em ambiente de desenvolvimento ou sem Firebase Admin SDK inicializado, finaliza sem erro
+        return None

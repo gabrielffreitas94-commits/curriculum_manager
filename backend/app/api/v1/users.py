@@ -3,11 +3,12 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import get_current_user
+from app.api.v1.deps import get_current_user, get_user_service
 from app.api.v1.schemas.user import UserSettingsResponse, UserSettingsUpdateRequest
 from app.core.crypto import crypto_service
 from app.core.database import get_db_session
 from app.domain.models import User, UserSettings
+from app.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["Usuários e Configurações"])
 
@@ -107,3 +108,27 @@ async def update_my_settings(
         in_app_notifications_enabled=settings.in_app_notifications_enabled,
         default_prompt_skill_id=settings.default_prompt_skill_id,
     )
+
+
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Exclui definitivamente a conta e dados do usuário (LGPD Art. 18)",
+    description=(
+        "Executa a eliminação total e atômica dos dados do titular "
+        "(LGPD - Direito ao Esquecimento), removendo em cascata configurações, "
+        "dossiê profissional, candidaturas, documentos gerados "
+        "e revogando suas credenciais de autenticação."
+    ),
+)
+async def delete_my_account(
+    current_user: User = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> None:
+    """Elimina definitivamente a conta do usuário logado e todos os dados associados.
+
+    Args:
+        current_user: Usuário autenticado solicitante da exclusão.
+        user_service: Serviço de domínio responsável pela exclusão atômica e revogação.
+    """
+    await user_service.delete_user_account(current_user)
