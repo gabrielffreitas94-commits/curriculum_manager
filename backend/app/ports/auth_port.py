@@ -55,3 +55,12 @@ class AuthPort(ABC):
             AuthError: Se claims obrigatórios estiverem ausentes no token.
         """
         pass
+
+    @abstractmethod
+    async def revoke_user_tokens(self, uid: str) -> None:
+        """Revoga todos os tokens e sessões ativas do usuário no provedor de identidade.
+
+        Args:
+            uid: Identificador único do usuário no provedor (Firebase UID).
+        """
+        pass
