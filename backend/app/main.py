@@ -21,6 +21,7 @@ from app.api.v1.resumes import router as resumes_router
 from app.api.v1.users import router as users_router
 from app.core.config import settings
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
+from app.core.security_headers import SecurityHeadersMiddleware
 
 
 @asynccontextmanager
@@ -47,13 +48,19 @@ def create_application() -> FastAPI:
     Returns:
         FastAPI: Instância totalmente configurada pronta para execução.
     """
+    openapi_url = (
+        f"{settings.API_V1_STR}/openapi.json" if settings.ENVIRONMENT != "production" else None
+    )
+    docs_url = f"{settings.API_V1_STR}/docs" if settings.ENVIRONMENT != "production" else None
+    redoc_url = f"{settings.API_V1_STR}/redoc" if settings.ENVIRONMENT != "production" else None
+
     application = FastAPI(
         title=settings.PROJECT_NAME,
         version=settings.VERSION,
         description="API de Gestão Inteligente de Currículos e ATS Pessoal com IA",
-        openapi_url=f"{settings.API_V1_STR}/openapi.json",
-        docs_url=f"{settings.API_V1_STR}/docs",
-        redoc_url=f"{settings.API_V1_STR}/redoc",
+        openapi_url=openapi_url,
+        docs_url=docs_url,
+        redoc_url=redoc_url,
         lifespan=lifespan,
     )
 
@@ -65,6 +72,10 @@ def create_application() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Configuração de Cabeçalhos de Segurança HTTP (Defense-in-Depth)
+    if settings.SECURITY_HEADERS_ENABLED:
+        application.add_middleware(SecurityHeadersMiddleware)
 
     # Configuração de Rate Limiting (SlowAPI)
     application.state.limiter = limiter
