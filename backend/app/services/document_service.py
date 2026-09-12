@@ -50,7 +50,7 @@ class DocumentService:
         templates_dir = Path(__file__).parent.parent / "templates"
         self.jinja_env = Environment(
             loader=FileSystemLoader(str(templates_dir)),
-            autoescape=select_autoescape(["html", "xml"]),
+            autoescape=select_autoescape(["html", "xml", "jinja2"]),
         )
         self.jinja_env.filters["format_date"] = LocaleRegistry.format_date
 

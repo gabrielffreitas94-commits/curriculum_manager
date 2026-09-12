@@ -1,14 +1,43 @@
 """Adaptador de renderização de PDF via WeasyPrint com suporte a CSS Paged Media.
 
 Em conformidade com a skill weasyprint-pdf-generator, executa a renderização
-HTML para PDF com isolamento de dependências e tratamento de ambiente.
+HTML para PDF com isolamento de dependências, tratamento de ambiente e proteção
+estrita contra SSRF e LFI através de um url_fetcher bloqueante.
 """
 
+from collections.abc import Callable
 from typing import Any
+
+
+def blocked_url_fetcher(url: str, timeout: int = 10, ssl_context: Any = None) -> dict[str, Any]:
+    """Interceptor que bloqueia requisições de rede externas e arquivos locais.
+
+    Previne vulnerabilidades de Server-Side Request Forgery (SSRF) contra serviços internos
+    ou de metadados da nuvem (ex: 169.254.169.254) e Local File Inclusion (LFI via file://).
+
+    Raises:
+        ValueError: Sempre que qualquer tentativa de carregar recurso remoto ou local ocorrer.
+    """
+    raise ValueError(
+        f"Acesso bloqueado por segurança: carregamento de recursos externos ou locais "
+        f"('{url}') não é permitido durante a renderização do currículo ATS."
+    )
 
 
 class WeasyPrintAdapter:
     """Adaptador que converte strings HTML estruturadas em PDFs de alta fidelidade vetorial."""
+
+    def __init__(
+        self,
+        url_fetcher: Callable[..., dict[str, Any]] | None = None,
+    ) -> None:
+        """Inicializa o adaptador configurando o interceptor seguro de URLs.
+
+        Args:
+            url_fetcher: Função opcional para resolução de recursos. Por padrão,
+                utiliza `blocked_url_fetcher` para máxima segurança contra SSRF/LFI.
+        """
+        self._url_fetcher = url_fetcher or blocked_url_fetcher
 
     def render_pdf(self, html_content: str) -> bytes:
         """Renderiza o conteúdo HTML em um binário PDF utilizando a engine WeasyPrint.
@@ -32,6 +61,9 @@ class WeasyPrintAdapter:
                 f"{exc}"
             ) from exc
 
-        html_renderer: Any = weasyprint.HTML(string=html_content)
+        html_renderer: Any = weasyprint.HTML(
+            string=html_content,
+            url_fetcher=self._url_fetcher,
+        )
         pdf_bytes: bytes = html_renderer.write_pdf()
         return pdf_bytes

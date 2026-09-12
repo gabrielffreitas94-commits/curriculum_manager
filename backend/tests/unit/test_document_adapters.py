@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.adapters.docx_adapter import DocxAdapter
-from app.adapters.weasyprint_adapter import WeasyPrintAdapter
+from app.adapters.weasyprint_adapter import WeasyPrintAdapter, blocked_url_fetcher
 
 
 @pytest.fixture
@@ -98,7 +98,10 @@ def test_weasyprint_adapter_renders_pdf() -> None:
     with patch.dict("sys.modules", {"weasyprint": mock_wp}):
         pdf_bytes = adapter.render_pdf(dummy_html)
         assert pdf_bytes.startswith(b"%PDF-1.4")
-        mock_wp.HTML.assert_called_once_with(string=dummy_html)
+        mock_wp.HTML.assert_called_once_with(
+            string=dummy_html,
+            url_fetcher=blocked_url_fetcher,
+        )
 
 
 def test_weasyprint_adapter_raises_when_missing_deps() -> None:
@@ -111,3 +114,85 @@ def test_weasyprint_adapter_raises_when_missing_deps() -> None:
         pytest.raises(RuntimeError, match="requer bibliotecas C nativas"),
     ):
         adapter.render_pdf(dummy_html)
+
+
+def test_blocked_url_fetcher_prevents_ssrf_and_lfi() -> None:
+    """Garante que o blocked_url_fetcher bloqueie tentativas de SSRF e LFI.
+
+    Documentação Executável (Contrato de Segurança):
+    Mesmo que o blocked_url_fetcher levante ValueError incondicionalmente (fail-closed),
+    este teste expressa formalmente os vetores de ameaça que a função se propõe a mitigar.
+    Garante que tentativas com esquemas file:// (LFI) e http:// (SSRF) sejam bloqueadas
+    com a mensagem esperada pelos sistemas de monitoramento/SIEM.
+    """
+    from app.adapters.weasyprint_adapter import blocked_url_fetcher
+
+    # Teste de tentativa de LFI via file://
+    with pytest.raises(ValueError, match="Acesso bloqueado por segurança"):
+        blocked_url_fetcher("file:///etc/passwd")
+
+    # Teste de tentativa de SSRF contra metadados de nuvem
+    with pytest.raises(ValueError, match="Acesso bloqueado por segurança"):
+        blocked_url_fetcher("http://169.254.169.254/computeMetadata/v1/")
+
+
+def test_weasyprint_adapter_custom_url_fetcher() -> None:
+    """Valida suporte a injeção de url_fetcher customizado no WeasyPrintAdapter."""
+    # 1. Arrange (Preparação)
+    custom_fetcher = MagicMock()
+    adapter = WeasyPrintAdapter(url_fetcher=custom_fetcher)
+    assert adapter._url_fetcher == custom_fetcher
+
+    mock_wp = MagicMock()
+    mock_html_instance = MagicMock()
+    mock_html_instance.write_pdf.return_value = b"%PDF-1.4 custom"
+    mock_wp.HTML.return_value = mock_html_instance
+
+    with patch.dict("sys.modules", {"weasyprint": mock_wp}):
+        # 2. Act (Execução)
+        pdf_bytes = adapter.render_pdf("<p>Test</p>")
+
+        # 3. Assert - Estado: valida o retorno do método render_pdf
+        assert pdf_bytes == b"%PDF-1.4 custom"
+
+        # 3. Assert - Comportamento: verifica se o adaptador realmente repassou o
+        # custom_fetcher para a engine do WeasyPrint (evitando uso silencioso do fetcher inseguro)
+        mock_wp.HTML.assert_called_once_with(
+            string="<p>Test</p>",
+            url_fetcher=custom_fetcher,
+        )
+
+
+def test_weasyprint_adapter_never_uses_default_url_fetcher() -> None:
+    """Garante que a inicialização padrão NUNCA recorra ao default_url_fetcher do WeasyPrint.
+
+    ALERTA DE SEGURANÇA (Vulnerabilidade SSRF/LFI):
+    O WeasyPrint possui um comportamento padrão perigoso: se 'url_fetcher' for None,
+    ele utiliza internamente o 'weasyprint.default_url_fetcher', que abre conexões
+    de rede HTTP (SSRF) e lê arquivos do sistema de arquivos via file:// (LFI).
+    Este teste blinda a aplicação contra qualquer refatoração que tente definir
+    o url_fetcher como None ou delegar para o fetcher nativo inseguro.
+    """
+    adapter = WeasyPrintAdapter()
+
+    # 1. Garante que por padrão o fetcher é estritamente o blocked_url_fetcher
+    assert adapter._url_fetcher is blocked_url_fetcher
+    assert adapter._url_fetcher is not None
+
+    # 2. Garante que o weasyprint.HTML recebe explicitamente o blocked_url_fetcher
+    mock_wp = MagicMock()
+    mock_wp.default_url_fetcher = MagicMock(name="default_url_fetcher")
+    mock_html_instance = MagicMock()
+    mock_html_instance.write_pdf.return_value = b"%PDF-1.4 Guardrail"
+    mock_wp.HTML.return_value = mock_html_instance
+
+    with patch.dict("sys.modules", {"weasyprint": mock_wp}):
+        adapter.render_pdf("<p>ATS Test</p>")
+
+        # Assegura que o parâmetro passado NUNCA foi o default inseguro e NUNCA foi None
+        mock_wp.HTML.assert_called_once_with(
+            string="<p>ATS Test</p>",
+            url_fetcher=blocked_url_fetcher,
+        )
+        assert mock_wp.HTML.call_args.kwargs["url_fetcher"] is not mock_wp.default_url_fetcher
+        assert mock_wp.HTML.call_args.kwargs["url_fetcher"] is not None
