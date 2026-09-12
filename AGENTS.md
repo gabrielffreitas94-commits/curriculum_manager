@@ -14,6 +14,11 @@ Este repositório possui personas especializadas integradas sob demanda através
 - **Comportamento:** Avalia Branch Coverage, Boundary Value Analysis (BVA), resiliência a mutações, acessibilidade WCAG 2.1 AA e conformidade estrita com o Quality Gate de 100% do CI/CD.
 - **Definição:** [SKILL.md](.agents/skills/qa-sdet-coverage/SKILL.md)
 
+### 3. Especialista em Guardrails Anti-Regressão para Segurança (`security-antiregression-guardrails`)
+- **Gatilhos:** "valide o teste de segurança", "verifique os guardrails de regressão", "audite as asserções de segurança", "verifique se os testes estão blindados contra regressão", "aplique a prática de guardrail anti-regressão".
+- **Comportamento:** Audita se os testes de segurança eliminam asserções tautológicas, impõem fail-closed, validam encaminhamento de parâmetros em spies e possuem docstrings estruturadas dual-target (para humanos e agentes IA/LLM).
+- **Definição:** [SKILL.md](.agents/skills/security-antiregression-guardrails/SKILL.md)
+
 ---
 
 ## ⚡ Regra de Roteamento de Personas
