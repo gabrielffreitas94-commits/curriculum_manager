@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_MATCH_PREVIEW: str = "10/minute"
     RATE_LIMIT_GENERATE: str = "5/minute"
 
+    # Configurações de Cabeçalhos de Segurança HTTP (OWASP A05:2021)
+    SECURITY_HEADERS_ENABLED: bool = True
+    HSTS_MAX_AGE_SECONDS: int = 31536000
+    HSTS_INCLUDE_SUBDOMAINS: bool = True
+    HSTS_PRELOAD: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
