@@ -20,6 +20,8 @@ from app.api.v1.profile import router as profile_router
 from app.api.v1.resumes import router as resumes_router
 from app.api.v1.users import router as users_router
 from app.core.config import settings
+from app.core.correlation_middleware import CorrelationMiddleware
+from app.core.logging import setup_logging
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.core.security_headers import SecurityHeadersMiddleware
 
@@ -38,6 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         None: Contexto de execução enquanto a aplicação permanece ativa.
     """
     # Rotinas de inicialização (startup)
+    setup_logging()
     yield
     # Rotinas de encerramento (shutdown)
 
@@ -48,6 +51,8 @@ def create_application() -> FastAPI:
     Returns:
         FastAPI: Instância totalmente configurada pronta para execução.
     """
+    setup_logging()
+
     openapi_url = (
         f"{settings.API_V1_STR}/openapi.json" if settings.ENVIRONMENT != "production" else None
     )
@@ -63,6 +68,9 @@ def create_application() -> FastAPI:
         redoc_url=redoc_url,
         lifespan=lifespan,
     )
+
+    # Middleware de Correlação e Rastreabilidade Distribuída (OTel / GCP)
+    application.add_middleware(CorrelationMiddleware)
 
     # Configuração de CORS
     application.add_middleware(
