@@ -4,8 +4,13 @@ Utiliza Pydantic Settings para carregar e validar variáveis de ambiente
 com suporte a arquivos .env locais e injeção em produção no Google Cloud Run.
 """
 
-from pydantic import Field
+import base64
+from typing import Self
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+INSECURE_DEFAULT_ENCRYPTION_KEY: str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
 
 class Settings(BaseSettings):
@@ -34,7 +39,7 @@ class Settings(BaseSettings):
     )
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./thothcvs_dev.db"
-    MASTER_ENCRYPTION_KEY: str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    MASTER_ENCRYPTION_KEY: str = INSECURE_DEFAULT_ENCRYPTION_KEY
     STORAGE_PROVIDER: str = "supabase"
 
     model_config = SettingsConfigDict(
@@ -43,6 +48,36 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def validate_master_encryption_key(self) -> Self:
+        """Garante a integridade e segurança da MASTER_ENCRYPTION_KEY.
+
+        Valida que a chave é uma string Base64 decodificável em exatamente 32 bytes (256 bits).
+        Em ambientes 'production' ou 'staging', impede terminantemente o uso da chave padrão
+        hardcoded de desenvolvimento para evitar falhas criptográficas graves.
+        """
+        try:
+            raw_key = base64.b64decode(self.MASTER_ENCRYPTION_KEY, validate=True)
+            if len(raw_key) != 32:
+                raise ValueError("A MASTER_ENCRYPTION_KEY deve conter exatamente 32 bytes.")
+        except Exception as exc:
+            raise ValueError(
+                f"MASTER_ENCRYPTION_KEY inválida: deve ser Base64 de 32 bytes. Erro: {exc}"
+            ) from exc
+
+        if (
+            self.ENVIRONMENT in ("production", "staging")
+            and self.MASTER_ENCRYPTION_KEY == INSECURE_DEFAULT_ENCRYPTION_KEY
+        ):
+            raise ValueError(
+                "CONFIGURAÇÃO INSEGURA: O uso da MASTER_ENCRYPTION_KEY padrão de "
+                "desenvolvimento é proibido em ambientes de produção e staging. "
+                "Gere uma chave criptográfica forte de 32 bytes (AES-GCM-256) "
+                "via Secret Manager."
+            )
+
+        return self
 
 
 settings = Settings()
