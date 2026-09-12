@@ -11,8 +11,12 @@ from typing import Any
 
 import structlog
 
+from app.adapters.gcp_logging_adapter import gcp_cloud_logging_processor
 from app.core.config import settings
 from app.core.telemetry import get_correlation_id, get_user_id
+
+# Alias para compatibilidade retroativa
+gcp_severity_processor = gcp_cloud_logging_processor
 
 # Chaves de atributos que devem ter seus valores automaticamente ofuscados
 SENSITIVE_KEYS: frozenset[str] = frozenset(
@@ -44,17 +48,6 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
 GEMINI_KEY_PATTERN = re.compile(r"AIzaSy[A-Za-z0-9_-]{33}")
 JWT_TOKEN_PATTERN = re.compile(r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
 BEARER_AUTH_PATTERN = re.compile(r"Bearer\s+[A-Za-z0-9_\-\.]+", re.IGNORECASE)
-
-GCP_SEVERITY_MAP: dict[str, str] = {
-    "debug": "DEBUG",
-    "info": "INFO",
-    "warning": "WARNING",
-    "warn": "WARNING",
-    "error": "ERROR",
-    "critical": "CRITICAL",
-    "fatal": "CRITICAL",
-    "exception": "ERROR",
-}
 
 
 def _scrub_value(val: Any) -> Any:
@@ -106,35 +99,6 @@ def inject_telemetry_context(
     uid = get_user_id()
     if uid and "user_id" not in event_dict:
         event_dict["user_id"] = uid
-
-    return event_dict
-
-
-def gcp_severity_processor(
-    logger: Any,
-    method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
-    """Processador de infraestrutura para compatibilidade com Google Cloud Logging.
-
-    Mapeia a severidade para o padrão GCP ('severity') e sintetiza o objeto
-    estruturado 'httpRequest' caso atributos neutros de requisição HTTP estejam presentes.
-    """
-    level = event_dict.get("level", "info").lower()
-    event_dict["severity"] = GCP_SEVERITY_MAP.get(level, "DEFAULT")
-
-    # Síntese do bloco nativo httpRequest do GCP a partir de atributos HTTP neutros (OTel)
-    if "http_method" in event_dict and "status_code" in event_dict:
-        duration_ms = event_dict.get("duration_ms", 0.0)
-        url_val = event_dict.get("url") or event_dict.get("path", "")
-        event_dict["httpRequest"] = {
-            "requestMethod": event_dict["http_method"],
-            "requestUrl": str(url_val),
-            "status": event_dict["status_code"],
-            "latency": f"{duration_ms / 1000:.4f}s",
-            "userAgent": event_dict.get("user_agent", ""),
-            "remoteIp": event_dict.get("remote_ip", ""),
-        }
 
     return event_dict
 

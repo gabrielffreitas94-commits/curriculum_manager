@@ -234,6 +234,27 @@ def test_setup_logging_and_get_logger():
     # Executa sem exceções
     logger.info("unit_test_log_event", status="ok", count=1)
 
+    # Cobertura de get_logger sem argumento name
+    unnamed_logger = get_logger()
+    assert unnamed_logger is not None
+
+
+def test_setup_logging_console_format(monkeypatch: pytest.MonkeyPatch):
+    """Valida inicialização do structlog em modo console para desenvolvimento local."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "LOG_FORMAT", "console")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+
+    setup_logging()
+    logger = get_logger("console_test")
+    assert logger is not None
+
+    # Restaura configuração padrão JSON
+    monkeypatch.setattr(settings, "LOG_FORMAT", "json")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    setup_logging()
+
 
 def test_gcp_cloud_logging_synthesizes_http_request():
     """Valida que o processador GCP sintetiza o bloco httpRequest a partir de campos neutros."""
@@ -259,3 +280,15 @@ def test_gcp_cloud_logging_synthesizes_http_request():
     assert http_req["latency"] == "0.1505s"
     assert http_req["userAgent"] == "Mozilla/5.0"
     assert http_req["remoteIp"] == "192.168.1.1"
+
+
+def test_gcp_cloud_logging_without_http_method():
+    """Valida que o processador GCP não sintetiza httpRequest quando ausente atributos HTTP."""
+    event = {
+        "event": "background_task",
+        "level": "info",
+    }
+
+    processed = gcp_severity_processor(None, "info", event)
+    assert processed["severity"] == "INFO"
+    assert "httpRequest" not in processed
