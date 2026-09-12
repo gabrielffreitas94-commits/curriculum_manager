@@ -15,6 +15,8 @@ import {
   MapPin,
   ExternalLink,
   Sparkles,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
 /**
@@ -27,7 +29,8 @@ import {
  * @a11y
  * - Apresenta estrutura semântica hierárquica (`<h1>` para o nome do candidato, `<h2>` para seções como Experiência e Educação).
  * - Links externos possuem `aria-label` descritivos e atributos `rel="noopener noreferrer"`.
- * - Os botões de download possuem rótulos claros para leitores de tela ("Baixar currículo em formato PDF para ATS").
+ * - Os botões de download utilizam requisições autenticadas com Bearer token e Blob para impedir vazamento de credenciais e erros 401.
+ * - Estados de carregamento são anunciados via `aria-busy` e feedback de erro acessível via `role="alert"` e `aria-live="polite"`.
  */
 export interface ResumeViewerProps {
   resume: ResumeGenerateResponse;
@@ -46,8 +49,24 @@ export const ResumeViewer: React.FC<ResumeViewerProps> = ({ resume, onClose }) =
     languages,
   } = structured_content;
 
-  const pdfUrl = ApiClient.getExportUrl(resume_id, "pdf");
-  const docxUrl = ApiClient.getExportUrl(resume_id, "docx");
+  const [downloadingFormat, setDownloadingFormat] = React.useState<"pdf" | "docx" | null>(null);
+  const [downloadError, setDownloadError] = React.useState<string | null>(null);
+
+  const handleDownload = async (format: "pdf" | "docx") => {
+    try {
+      setDownloadingFormat(format);
+      setDownloadError(null);
+      await ApiClient.downloadExport(resume_id, format);
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error
+          ? err.message
+          : `Falha ao baixar currículo em formato ${format.toUpperCase()}.`
+      );
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
 
   return (
     <div
@@ -65,43 +84,77 @@ export const ResumeViewer: React.FC<ResumeViewerProps> = ({ resume, onClose }) =
         </div>
 
         <div className="flex items-center gap-2">
-          <a
-            href={pdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download={`curriculo_${resume_id}.pdf`}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition focus:outline-hidden focus:ring-2 focus:ring-red-500"
+          <button
+            type="button"
+            onClick={() => handleDownload("pdf")}
+            disabled={downloadingFormat !== null}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-xs font-bold shadow-xs transition focus:outline-hidden focus:ring-2 focus:ring-red-500 cursor-pointer disabled:cursor-not-allowed"
             aria-label="Exportar e baixar currículo em formato PDF com diagramação ATS"
+            aria-busy={downloadingFormat === "pdf"}
           >
-            <FileText className="h-4 w-4" aria-hidden="true" />
-            <Download className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Baixar PDF (ATS)</span>
-          </a>
+            {downloadingFormat === "pdf" ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <>
+                <FileText className="h-4 w-4" aria-hidden="true" />
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              </>
+            )}
+            <span>{downloadingFormat === "pdf" ? "Baixando PDF..." : "Baixar PDF (ATS)"}</span>
+          </button>
 
-          <a
-            href={docxUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download={`curriculo_${resume_id}.docx`}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+          <button
+            type="button"
+            onClick={() => handleDownload("docx")}
+            disabled={downloadingFormat !== null}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-bold shadow-xs transition focus:outline-hidden focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed"
             aria-label="Exportar e baixar currículo editável em formato Word DOCX"
+            aria-busy={downloadingFormat === "docx"}
           >
-            <FileText className="h-4 w-4" aria-hidden="true" />
-            <Download className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Baixar DOCX</span>
-          </a>
+            {downloadingFormat === "docx" ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <>
+                <FileText className="h-4 w-4" aria-hidden="true" />
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              </>
+            )}
+            <span>{downloadingFormat === "docx" ? "Baixando DOCX..." : "Baixar DOCX"}</span>
+          </button>
 
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-2 text-xs font-medium rounded-lg text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+              className="px-3 py-2 text-xs font-medium rounded-lg text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
             >
               Fechar
             </button>
           )}
         </div>
       </div>
+
+      {/* Alerta Acessível de Falha no Download */}
+      {downloadError && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-red-50 dark:bg-red-950/60 border-b border-red-200 dark:border-red-900/60 px-4 py-2.5 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-2"
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0 text-red-500" aria-hidden="true" />
+            <span>{downloadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDownloadError(null)}
+            className="text-red-600 hover:text-red-800 dark:hover:text-red-200 text-xs font-semibold underline cursor-pointer"
+            aria-label="Fechar mensagem de erro de download"
+          >
+            Fechar
+          </button>
+        </div>
+      )}
 
       {/* Folha do Currículo (Estilo ATS Single-Column) */}
       <div className="p-8 sm:p-12 max-w-4xl mx-auto w-full space-y-6 text-slate-800 dark:text-slate-200">

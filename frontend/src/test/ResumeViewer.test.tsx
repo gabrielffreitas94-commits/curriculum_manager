@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ResumeViewer } from "@/components/ResumeViewer";
+import { ApiClient } from "@/lib/api";
 import { ResumeGenerateResponse } from "@/types";
 
 describe("ResumeViewer Component", () => {
@@ -75,16 +76,69 @@ describe("ResumeViewer Component", () => {
     expect(screen.getByText(/versão v2 • aderência 91%/i)).toBeInTheDocument();
   });
 
-  it("should render PDF and DOCX export links with appropriate hrefs", () => {
+  it("should render PDF and DOCX export buttons with accessible labels", () => {
     render(<ResumeViewer {...defaultProps} />);
 
-    const pdfLink = screen.getByRole("link", { name: /exportar e baixar currículo em formato pdf/i });
-    expect(pdfLink).toHaveAttribute("href", expect.stringContaining("/resumes/res-uuid-12345/export/pdf"));
-    expect(pdfLink).toHaveAttribute("download", "curriculo_res-uuid-12345.pdf");
+    const pdfBtn = screen.getByRole("button", { name: /exportar e baixar currículo em formato pdf/i });
+    expect(pdfBtn).toBeInTheDocument();
 
-    const docxLink = screen.getByRole("link", { name: /exportar e baixar currículo editável em formato word/i });
-    expect(docxLink).toHaveAttribute("href", expect.stringContaining("/resumes/res-uuid-12345/export/docx"));
-    expect(docxLink).toHaveAttribute("download", "curriculo_res-uuid-12345.docx");
+    const docxBtn = screen.getByRole("button", { name: /exportar e baixar currículo editável em formato word/i });
+    expect(docxBtn).toBeInTheDocument();
+  });
+
+  it("should trigger authenticated download via ApiClient.downloadExport when clicking export buttons", async () => {
+    /**
+     * VETOR DE AMEAÇA:
+     * Links estáticos <a href> em arquivos exportados causam vazamento de JWT caso inseridos
+     * em query params, ou falhas de autorização 401 por omissão do cabeçalho Bearer Token.
+     *
+     * COMPORTAMENTO ESPERADO:
+     * O componente ResumeViewer deve invocar ApiClient.downloadExport fornecendo o resume_id
+     * e o formato solicitado, gerando o download seguro via Blob em memória com Authorization header.
+     *
+     * PREMISSA DO GUARDRAIL:
+     * É mandatório assegurar que os botões acionem ApiClient.downloadExport com os parâmetros
+     * corretos para 'pdf' e 'docx' e exibam estado de carregamento acessível via aria-busy.
+     *
+     * ORIENTAÇÃO PARA AGENTES IA:
+     * Não altere ou enfraqueça a chamada de ApiClient.downloadExport nem retorne a âncoras <a href> estáticas.
+     */
+    const downloadSpy = vi.spyOn(ApiClient, "downloadExport").mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    render(<ResumeViewer {...defaultProps} />);
+
+    const pdfBtn = screen.getByRole("button", { name: /exportar e baixar currículo em formato pdf/i });
+    fireEvent.click(pdfBtn);
+
+    expect(downloadSpy).toHaveBeenCalledWith("res-uuid-12345", "pdf");
+    expect(pdfBtn).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("Baixando PDF...")).toBeInTheDocument();
+
+    await screen.findByText("Baixar PDF (ATS)");
+
+    const docxBtn = screen.getByRole("button", { name: /exportar e baixar currículo editável em formato word/i });
+    fireEvent.click(docxBtn);
+
+    expect(downloadSpy).toHaveBeenCalledWith("res-uuid-12345", "docx");
+    expect(docxBtn).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("Baixando DOCX...")).toBeInTheDocument();
+  });
+
+  it("should display accessible error alert when download fails and allow dismissing it", async () => {
+    vi.spyOn(ApiClient, "downloadExport").mockRejectedValueOnce(new Error("Erro 500 no renderizador WeasyPrint."));
+
+    render(<ResumeViewer {...defaultProps} />);
+
+    const pdfBtn = screen.getByRole("button", { name: /exportar e baixar currículo em formato pdf/i });
+    fireEvent.click(pdfBtn);
+
+    const alertBox = await screen.findByRole("alert");
+    expect(alertBox).toHaveTextContent("Erro 500 no renderizador WeasyPrint.");
+
+    const closeAlertBtn = screen.getByRole("button", { name: /fechar mensagem de erro de download/i });
+    fireEvent.click(closeAlertBtn);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("should render candidate header info (name, title, contacts, links)", () => {

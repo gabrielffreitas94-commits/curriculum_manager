@@ -137,6 +137,66 @@ export class ApiClient {
     return `${API_BASE_URL}/resumes/${resumeId}/export/${format}`;
   }
 
+  /**
+   * Exporta o currículo como Blob binário autenticado com Bearer token.
+   * Evita a exposição de credenciais em query strings e impede falhas de autorização (401)
+   * decorrentes de downloads diretos desprovidos de headers HTTP.
+   *
+   * @param resumeId Identificador do currículo gerado.
+   * @param format Formato desejado: "pdf" ou "docx".
+   * @returns Objeto contendo o Blob do arquivo e o nome do arquivo extraído ou padrão.
+   */
+  public static async exportResumeBlob(
+    resumeId: string,
+    format: "pdf" | "docx"
+  ): Promise<{ blob: Blob; filename: string }> {
+    const url = ApiClient.getExportUrl(resumeId, format);
+    const res = await fetch(url, {
+      headers: ApiClient.getHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Falha ao exportar currículo em formato ${format.toUpperCase()}.`);
+    }
+
+    let filename = `curriculo_${resumeId}.${format}`;
+    const disposition = res.headers?.get ? res.headers.get("Content-Disposition") : null;
+    if (disposition) {
+      const match = disposition.match(/filename=["']?([^"';]+)["']?/i);
+      if (match && match[1]) {
+        filename = match[1].trim();
+      }
+    }
+
+    const blob = await res.blob();
+    return { blob, filename };
+  }
+
+  /**
+   * Realiza o download seguro do currículo disparando a requisição autenticada com Bearer token,
+   * convertendo a resposta em Blob e acionando o download no navegador via Object URL.
+   *
+   * @param resumeId Identificador do currículo gerado.
+   * @param format Formato de exportação ("pdf" | "docx").
+   * @param defaultFilename Nome alternativo para o arquivo baixado.
+   */
+  public static async downloadExport(
+    resumeId: string,
+    format: "pdf" | "docx",
+    defaultFilename?: string
+  ): Promise<void> {
+    const { blob, filename } = await ApiClient.exportResumeBlob(resumeId, format);
+    const downloadName = defaultFilename || filename;
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = downloadName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  }
+
   // --- Notificações ---
   public static async getNotifications(
     unreadOnly: boolean = false
