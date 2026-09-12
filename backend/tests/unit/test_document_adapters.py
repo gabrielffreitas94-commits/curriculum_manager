@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.adapters.docx_adapter import DocxAdapter
-from app.adapters.weasyprint_adapter import WeasyPrintAdapter
+from app.adapters.weasyprint_adapter import WeasyPrintAdapter, blocked_url_fetcher
 
 
 @pytest.fixture
@@ -100,7 +100,7 @@ def test_weasyprint_adapter_renders_pdf() -> None:
         assert pdf_bytes.startswith(b"%PDF-1.4")
         mock_wp.HTML.assert_called_once_with(
             string=dummy_html,
-            url_fetcher=adapter._url_fetcher,
+            url_fetcher=blocked_url_fetcher,
         )
 
 
@@ -161,3 +161,38 @@ def test_weasyprint_adapter_custom_url_fetcher() -> None:
             string="<p>Test</p>",
             url_fetcher=custom_fetcher,
         )
+
+
+def test_weasyprint_adapter_never_uses_default_url_fetcher() -> None:
+    """Garante que a inicialização padrão NUNCA recorra ao default_url_fetcher do WeasyPrint.
+
+    ALERTA DE SEGURANÇA (Vulnerabilidade SSRF/LFI):
+    O WeasyPrint possui um comportamento padrão perigoso: se 'url_fetcher' for None,
+    ele utiliza internamente o 'weasyprint.default_url_fetcher', que abre conexões
+    de rede HTTP (SSRF) e lê arquivos do sistema de arquivos via file:// (LFI).
+    Este teste blinda a aplicação contra qualquer refatoração que tente definir
+    o url_fetcher como None ou delegar para o fetcher nativo inseguro.
+    """
+    adapter = WeasyPrintAdapter()
+
+    # 1. Garante que por padrão o fetcher é estritamente o blocked_url_fetcher
+    assert adapter._url_fetcher is blocked_url_fetcher
+    assert adapter._url_fetcher is not None
+
+    # 2. Garante que o weasyprint.HTML recebe explicitamente o blocked_url_fetcher
+    mock_wp = MagicMock()
+    mock_wp.default_url_fetcher = MagicMock(name="default_url_fetcher")
+    mock_html_instance = MagicMock()
+    mock_html_instance.write_pdf.return_value = b"%PDF-1.4 Guardrail"
+    mock_wp.HTML.return_value = mock_html_instance
+
+    with patch.dict("sys.modules", {"weasyprint": mock_wp}):
+        adapter.render_pdf("<p>ATS Test</p>")
+
+        # Assegura que o parâmetro passado NUNCA foi o default inseguro e NUNCA foi None
+        mock_wp.HTML.assert_called_once_with(
+            string="<p>ATS Test</p>",
+            url_fetcher=blocked_url_fetcher,
+        )
+        assert mock_wp.HTML.call_args.kwargs["url_fetcher"] is not mock_wp.default_url_fetcher
+        assert mock_wp.HTML.call_args.kwargs["url_fetcher"] is not None
