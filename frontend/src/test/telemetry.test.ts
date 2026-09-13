@@ -23,16 +23,26 @@ describe("Frontend Telemetry & Correlation ID", () => {
     });
 
     it("should generate valid UUIDv4 when crypto.randomUUID is undefined (fallback mode)", () => {
-      const originalRandomUUID = crypto.randomUUID;
+      vi.stubGlobal("crypto", {});
       try {
-        // @ts-expect-error - simulating browser environment without crypto.randomUUID
-        delete crypto.randomUUID;
         const id = generateCorrelationId();
         expect(id).toMatch(
           /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
         );
       } finally {
-        crypto.randomUUID = originalRandomUUID;
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("should generate valid UUIDv4 when crypto is completely undefined", () => {
+      vi.stubGlobal("crypto", undefined);
+      try {
+        const id = generateCorrelationId();
+        expect(id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        );
+      } finally {
+        vi.unstubAllGlobals();
       }
     });
   });

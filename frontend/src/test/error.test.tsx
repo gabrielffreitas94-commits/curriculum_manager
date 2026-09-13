@@ -98,4 +98,24 @@ describe("GlobalRouteError Component (app/error.tsx)", () => {
     const homeLink = screen.getByRole("link", { name: /Voltar ao Início/i });
     expect(homeLink).toHaveAttribute("href", "/");
   });
+
+  it("should handle clipboard writeText rejection gracefully", async () => {
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockRejectedValue(new Error("Clipboard permission denied")),
+      },
+    });
+
+    const error = new Error("Test error");
+    render(<GlobalRouteError error={error} reset={mockReset} />);
+
+    const copyBtn = screen.getByRole("button", {
+      name: /Copiar ID de suporte para a área de transferência/i,
+    });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Copiado!")).not.toBeInTheDocument();
+    });
+  });
 });

@@ -26,6 +26,7 @@ const SENSITIVE_KEYS = new Set([
 export function generateCorrelationId(): string {
   if (
     typeof crypto !== "undefined" &&
+    crypto &&
     typeof crypto.randomUUID === "function"
   ) {
     return crypto.randomUUID();

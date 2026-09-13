@@ -71,7 +71,7 @@ export class ApiClient {
     if (!res || !res.headers || typeof res.headers.get !== "function") {
       return null;
     }
-    return res.headers.get("x-correlation-id") || res.headers.get("X-Correlation-ID");
+    return res.headers.get("x-correlation-id");
   }
 
   private static handleError(

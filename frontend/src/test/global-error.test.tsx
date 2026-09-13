@@ -71,4 +71,24 @@ describe("GlobalRootError Component (app/global-error.tsx)", () => {
 
     expect(mockReset).toHaveBeenCalledTimes(1);
   });
+
+  it("should handle clipboard writeText rejection gracefully", async () => {
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockRejectedValue(new Error("Clipboard permission denied")),
+      },
+    });
+
+    const error = new Error("Fatal");
+    render(<GlobalRootError error={error} reset={mockReset} />);
+
+    const copyBtn = screen.getByRole("button", {
+      name: /Copiar ID de correlação/i,
+    });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Copiado!")).not.toBeInTheDocument();
+    });
+  });
 });
