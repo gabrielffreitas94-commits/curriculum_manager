@@ -36,24 +36,38 @@
    - Desenvolvida com Next.js 15 (App Router), Tailwind CSS e Lucide Icons.
    - Conformidade estrita WCAG: foco por teclado, modais acessíveis (*focus trap* e *Escape*), links de salto (*skip-to-content*), e independência de cor (status com ícone + cor + texto).
 
+8. **Observabilidade & Rastreabilidade Distribuída de Ponta a Ponta**:
+   - Logging estruturado com `structlog` agnóstico e adaptador nativo para Google Cloud Logging / Cloud Trace.
+   - Rastreamento ponta a ponta com propagação contínua de `X-Correlation-ID` do frontend Next.js 15 aos serviços de backend FastAPI.
+   - Telemetria de LLM Ops (latência, consumo de tokens, modelo e score de veracidade anti-alucinação).
+   - Higienização automática e estrita de PII e segredos (tokens Bearer, senhas e API keys).
+   - Error Boundaries acessíveis (Next.js 15 App Router) com exibição e cópia assistida de ID de Suporte para SRE.
+
 ---
 
 ## 🛠️ Arquitetura do Sistema
 
-O backend foi projetado sob os princípios de **Arquitetura Hexagonal (Ports & Adapters)** e **Clean Architecture**:
+O sistema foi projetado sob os princípios de **Arquitetura Hexagonal (Ports & Adapters)** e **Clean Architecture**:
 
 ```
 backend/
 ├── app/
-│   ├── adapters/          # Implementações concretas (Gemini, WeasyPrint, DOCX, Firebase)
+│   ├── adapters/          # Implementações concretas (Gemini, WeasyPrint, DOCX, Firebase, GCP Logging)
 │   ├── api/v1/            # Controllers FastAPI, rotas e dependências
 │   │   └── schemas/       # Contratos Pydantic v2
-│   ├── core/              # Configurações, banco assíncrono, i18n, criptografia e algoritmos
+│   ├── core/              # Configurações, banco assíncrono, i18n, criptografia, logging, telemetry e correlation
 │   ├── domain/            # Modelos relacionais SQLAlchemy 2.0
 │   ├── ports/             # Interfaces abstratas (AI, Documentos, Autenticação)
 │   ├── services/          # Casos de uso e orquestração de negócio
 │   └── templates/         # Templates Jinja2 para renderização de currículos
-└── tests/                 # Suíte automatizada de testes unitários e de integração
+└── tests/                 # Suíte automatizada de testes unitários e de integração (216 testes)
+
+frontend/
+├── src/
+│   ├── app/               # Next.js 15 App Router (layout, page, error boundaries)
+│   ├── components/        # Componentes acessíveis Radix/Tailwind (Kanban, Drawer, Viewer, Modais)
+│   ├── lib/               # Cliente HTTP ApiClient (com correlation ID) e módulo de telemetria
+│   └── test/              # Suíte de testes unitários e componentes Vitest (123 testes)
 ```
 
 ---
@@ -110,25 +124,36 @@ backend/
 
 ---
 
-## 🧪 Qualidade de Código & Testes Automatizados
+## 🧪 Qualidade de Código & CI/CD Quality Gates
 
-O projeto adota uma política rigorosa de **Test-Driven Development (TDD)** e tipagem estrita:
+O projeto adota uma política rigorosa de **Test-Driven Development (TDD)**, tipagem estrita e **Quality Gates automatizados** no GitHub Actions:
 
 ```bash
-# Execução da suíte completa de testes com relatório de cobertura
-cd backend
-uv run pytest --cov=app
+# Backend: Testes com 100% de cobertura obrigatória
+uv run pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=100
 
-# Verificação estática de tipos (strict = true)
+# Backend: Verificação estática de tipos e linter
 uv run mypy app
-
-# Linter e formatação de código
 uv run ruff check .
+uv run ruff format --check .
+
+# Frontend: Testes unitários com 100% de cobertura de linhas
+npm run test:coverage
+
+# Frontend: Linter e compilação de produção
+npm run lint
+npm run build
+
+# Quality Gates de CI/CD
+python scripts/check_hexagonal_architecture.py
+python scripts/check_security_guardrails.py
 ```
 
-- **Cobertura de Testes**: 60 testes passando com sucesso.
-- **Tipagem Mypy**: 0 erros em 43 módulos de código-fonte.
-- **Ruff**: 0 avisos ou inconformidades de estilo.
+- **Cobertura de Testes Backend:** 216 testes passando com 100.00% de cobertura em 50 arquivos.
+- **Cobertura de Testes Frontend:** 123 testes passando com 100.00% de cobertura de linhas em 12 suítes.
+- **Tipagem Mypy & TypeScript:** 0 erros de tipagem.
+- **AST Architecture Gate:** 100% de conformidade com os limites da Arquitetura Hexagonal.
+- **Security Anti-Regression Gate:** 100% blindado contra regressão em testes de segurança protegidos.
 
 ---
 
