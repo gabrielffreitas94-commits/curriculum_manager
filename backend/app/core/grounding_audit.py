@@ -4,11 +4,16 @@ Executa validação cruzada estrita entre o JSON estruturado emitido pelo Gemini
 e o dossiê factual do usuário persistido no PostgreSQL. Garante 100% de veracidade.
 """
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from enum import StrEnum
 from typing import Any
+
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class HallucinationSeverity(StrEnum):
@@ -211,6 +216,7 @@ class GroundingAuditEngine:
         total_facts = 0
         verified_confidence = 0.0
         tier_counts: dict[str, int] = {}
+        start_time = time.perf_counter()
 
         # Normaliza conjuntos factuais do usuário
         registered_companies = {c for c in user_dossier.get("companies", []) if c}
@@ -312,6 +318,18 @@ class GroundingAuditEngine:
         )
 
         is_valid = (not has_critical) and (trust_score >= 80.0)
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+        logger.info(
+            "grounding_audit_completed",
+            is_valid=is_valid,
+            trust_score=trust_score,
+            severity=max_severity.value,
+            total_facts=total_facts,
+            hallucinations_count=len(issues),
+            verified_counts_by_tier=tier_counts,
+            duration_ms=duration_ms,
+        )
 
         return AuditResult(
             is_valid=is_valid,
@@ -359,5 +377,10 @@ class GroundingAuditEngine:
                     exp["tech_stack"] = [
                         t for t in exp["tech_stack"] if t.lower().strip() not in hallucinated_skills
                     ]
+
+        logger.info(
+            "grounding_sanitization_completed",
+            pruned_skills_count=len(hallucinated_skills),
+        )
 
         return sanitized

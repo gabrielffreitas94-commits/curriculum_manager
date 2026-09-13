@@ -5,6 +5,7 @@ estruturados e estritamente otimizados para ATS (Applicant Tracking Systems),
 sem o uso de tabelas complexas, caixas de texto ou cabeçalhos flutuantes.
 """
 
+import time
 from io import BytesIO
 from typing import Any
 
@@ -13,6 +14,9 @@ from docx.document import Document as DocxDocument
 from docx.shared import Inches, Pt, RGBColor
 
 from app.core.i18n import LocaleRegistry
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class DocxAdapter:
@@ -28,6 +32,7 @@ class DocxAdapter:
         Returns:
             Bytes correspondentes ao arquivo OpenXML .docx.
         """
+        start_time = time.perf_counter()
         doc = Document()
 
         # Configuração de Margens (1.5 cm / ~0.6 pol)
@@ -198,7 +203,16 @@ class DocxAdapter:
 
         output_stream = BytesIO()
         doc.save(output_stream)
-        return output_stream.getvalue()
+        docx_bytes = output_stream.getvalue()
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.info(
+            "docx_rendered_successfully",
+            document_type="docx",
+            docx_size_bytes=len(docx_bytes),
+            duration_ms=duration_ms,
+            locale_code=locale_code,
+        )
+        return docx_bytes
 
     def _add_section_heading(self, doc: DocxDocument, title: str) -> None:
         """Adiciona um cabeçalho de seção padronizado com separador visual ATS.
