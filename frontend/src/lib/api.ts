@@ -3,6 +3,7 @@
  *
  * Fornece métodos tipados para consumo de candidaturas, análise semântica,
  * geração e exportação de currículos, além do centro de notificações.
+ * Integra propagação automática de X-Correlation-ID e captura estruturada de erros.
  */
 
 import {
@@ -14,9 +15,42 @@ import {
   NotificationItem,
   ResumeGenerateResponse,
 } from "@/types";
+import { frontendLogger, getCorrelationId } from "@/lib/telemetry";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
+/**
+ * Erro customizado de integração com a API, contendo metadados de observabilidade
+ * como status HTTP e Correlation ID retornado pelo backend.
+ */
+export class ApiError extends Error {
+  public status: number;
+  public correlationId: string | null;
+  public detail?: string;
+  public url?: string;
+  public method?: string;
+
+  constructor(
+    message: string,
+    options?: {
+      status?: number;
+      correlationId?: string | null;
+      detail?: string;
+      url?: string;
+      method?: string;
+    }
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = options?.status ?? 500;
+    this.correlationId = options?.correlationId ?? null;
+    this.detail = options?.detail;
+    this.url = options?.url;
+    this.method = options?.method;
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
+}
 
 export class ApiClient {
   private static token: string = "mock_auth_token_for_dev";
@@ -25,11 +59,43 @@ export class ApiClient {
     ApiClient.token = newToken;
   }
 
-  private static getHeaders(): HeadersInit {
+  private static getHeaders(customCorrelationId?: string): HeadersInit {
     return {
       "Content-Type": "application/json",
       Authorization: `Bearer ${ApiClient.token}`,
+      "X-Correlation-ID": customCorrelationId || getCorrelationId(),
     };
+  }
+
+  private static extractCorrelationId(res: Response): string | null {
+    if (!res || !res.headers || typeof res.headers.get !== "function") {
+      return null;
+    }
+    return res.headers.get("x-correlation-id");
+  }
+
+  private static handleError(
+    res: Response,
+    defaultMessage: string,
+    url: string,
+    method: string,
+    detail?: string
+  ): never {
+    const correlationId = ApiClient.extractCorrelationId(res);
+    frontendLogger.error("api_request_failed", {
+      url,
+      method,
+      status: res.status,
+      correlation_id: correlationId || undefined,
+      error_detail: detail || defaultMessage,
+    });
+    throw new ApiError(detail || defaultMessage, {
+      status: res.status,
+      correlationId,
+      detail,
+      url,
+      method,
+    });
   }
 
   // --- Candidaturas (ATS) ---
@@ -44,17 +110,22 @@ export class ApiClient {
 
     const url = `${API_BASE_URL}/applications?${params.toString()}`;
     const res = await fetch(url, { headers: ApiClient.getHeaders() });
-    if (!res.ok) throw new Error("Erro ao buscar candidaturas.");
+    if (!res.ok) {
+      ApiClient.handleError(res, "Erro ao buscar candidaturas.", url, "GET");
+    }
     return res.json();
   }
 
   public static async getApplicationDetail(
     id: string
   ): Promise<ApplicationDetail> {
-    const res = await fetch(`${API_BASE_URL}/applications/${id}`, {
+    const url = `${API_BASE_URL}/applications/${id}`;
+    const res = await fetch(url, {
       headers: ApiClient.getHeaders(),
     });
-    if (!res.ok) throw new Error("Erro ao buscar detalhes da vaga.");
+    if (!res.ok) {
+      ApiClient.handleError(res, "Erro ao buscar detalhes da vaga.", url, "GET");
+    }
     return res.json();
   }
 
@@ -67,12 +138,15 @@ export class ApiClient {
     location?: string;
     status?: string;
   }): Promise<ApplicationItem> {
-    const res = await fetch(`${API_BASE_URL}/applications`, {
+    const url = `${API_BASE_URL}/applications`;
+    const res = await fetch(url, {
       method: "POST",
       headers: ApiClient.getHeaders(),
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error("Erro ao cadastrar candidatura.");
+    if (!res.ok) {
+      ApiClient.handleError(res, "Erro ao cadastrar candidatura.", url, "POST");
+    }
     return res.json();
   }
 
@@ -80,20 +154,26 @@ export class ApiClient {
     id: string,
     newStatus: ApplicationStatus
   ): Promise<ApplicationItem> {
-    const res = await fetch(`${API_BASE_URL}/applications/${id}`, {
+    const url = `${API_BASE_URL}/applications/${id}`;
+    const res = await fetch(url, {
       method: "PATCH",
       headers: ApiClient.getHeaders(),
       body: JSON.stringify({ status: newStatus }),
     });
-    if (!res.ok) throw new Error("Erro ao atualizar status da candidatura.");
+    if (!res.ok) {
+      ApiClient.handleError(res, "Erro ao atualizar status da candidatura.", url, "PATCH");
+    }
     return res.json();
   }
 
   public static async getAnalyticsMetrics(): Promise<ApplicationAnalyticsMetrics> {
-    const res = await fetch(`${API_BASE_URL}/applications/analytics/metrics`, {
+    const url = `${API_BASE_URL}/applications/analytics/metrics`;
+    const res = await fetch(url, {
       headers: ApiClient.getHeaders(),
     });
-    if (!res.ok) throw new Error("Erro ao buscar métricas analíticas.");
+    if (!res.ok) {
+      ApiClient.handleError(res, "Erro ao buscar métricas analíticas.", url, "GET");
+    }
     return res.json();
   }
 
@@ -101,12 +181,15 @@ export class ApiClient {
   public static async previewMatch(
     jobDescription: string
   ): Promise<MatchPreviewResponse> {
-    const res = await fetch(`${API_BASE_URL}/resumes/match-preview`, {
+    const url = `${API_BASE_URL}/resumes/match-preview`;
+    const res = await fetch(url, {
       method: "POST",
       headers: ApiClient.getHeaders(),
       body: JSON.stringify({ job_description: jobDescription }),
     });
-    if (!res.ok) throw new Error("Erro ao calcular aderência semântica.");
+    if (!res.ok) {
+      ApiClient.handleError(res, "Erro ao calcular aderência semântica.", url, "POST");
+    }
     return res.json();
   }
 
@@ -118,14 +201,21 @@ export class ApiClient {
     company_name?: string;
     job_title?: string;
   }): Promise<ResumeGenerateResponse> {
-    const res = await fetch(`${API_BASE_URL}/resumes/generate`, {
+    const url = `${API_BASE_URL}/resumes/generate`;
+    const res = await fetch(url, {
       method: "POST",
       headers: ApiClient.getHeaders(),
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Falha na síntese do currículo com IA.");
+      ApiClient.handleError(
+        res,
+        "Falha na síntese do currículo com IA.",
+        url,
+        "POST",
+        err.detail
+      );
     }
     return res.json();
   }
@@ -156,7 +246,12 @@ export class ApiClient {
     });
 
     if (!res.ok) {
-      throw new Error(`Falha ao exportar currículo em formato ${format.toUpperCase()}.`);
+      ApiClient.handleError(
+        res,
+        `Falha ao exportar currículo em formato ${format.toUpperCase()}.`,
+        url,
+        "GET"
+      );
     }
 
     let filename = `curriculo_${resumeId}.${format}`;
@@ -201,46 +296,71 @@ export class ApiClient {
   public static async getNotifications(
     unreadOnly: boolean = false
   ): Promise<NotificationItem[]> {
-    const res = await fetch(
-      `${API_BASE_URL}/notifications?unread_only=${unreadOnly}`,
-      { headers: ApiClient.getHeaders() }
-    );
-    if (!res.ok) throw new Error("Erro ao carregar notificações.");
+    const url = `${API_BASE_URL}/notifications?unread_only=${unreadOnly}`;
+    const res = await fetch(url, { headers: ApiClient.getHeaders() });
+    if (!res.ok) {
+      ApiClient.handleError(res, "Erro ao carregar notificações.", url, "GET");
+    }
     return res.json();
   }
 
   public static async getUnreadCount(): Promise<number> {
-    const res = await fetch(`${API_BASE_URL}/notifications/unread-count`, {
+    const url = `${API_BASE_URL}/notifications/unread-count`;
+    const res = await fetch(url, {
       headers: ApiClient.getHeaders(),
     });
-    if (!res.ok) return 0;
+    if (!res.ok) {
+      frontendLogger.warn("api_request_failed_fallback", {
+        url,
+        method: "GET",
+        status: res.status,
+      });
+      return 0;
+    }
     const data = await res.json();
     return data.unread_count || 0;
   }
 
   public static async markAsRead(id: string): Promise<void> {
-    await fetch(`${API_BASE_URL}/notifications/${id}/read`, {
+    const url = `${API_BASE_URL}/notifications/${id}/read`;
+    await fetch(url, {
       method: "PATCH",
       headers: ApiClient.getHeaders(),
     });
   }
 
   public static async markAllAsRead(): Promise<number> {
-    const res = await fetch(`${API_BASE_URL}/notifications/mark-all-read`, {
+    const url = `${API_BASE_URL}/notifications/mark-all-read`;
+    const res = await fetch(url, {
       method: "POST",
       headers: ApiClient.getHeaders(),
     });
-    if (!res.ok) return 0;
+    if (!res.ok) {
+      frontendLogger.warn("api_request_failed_fallback", {
+        url,
+        method: "POST",
+        status: res.status,
+      });
+      return 0;
+    }
     const data = await res.json();
     return data.updated_count || 0;
   }
 
   public static async triggerFollowUpScan(): Promise<number> {
-    const res = await fetch(`${API_BASE_URL}/notifications/scan-follow-ups`, {
+    const url = `${API_BASE_URL}/notifications/scan-follow-ups`;
+    const res = await fetch(url, {
       method: "POST",
       headers: ApiClient.getHeaders(),
     });
-    if (!res.ok) return 0;
+    if (!res.ok) {
+      frontendLogger.warn("api_request_failed_fallback", {
+        url,
+        method: "POST",
+        status: res.status,
+      });
+      return 0;
+    }
     const data = await res.json();
     return data.created_count || 0;
   }
