@@ -385,4 +385,3 @@ def test_guardrail_pii_scrubber_case_insensitivity_and_structure_resilience():
     assert scrubbed["Api_Key"] == "[REDACTED]"
     assert scrubbed["nested"]["SECRET"] == "[REDACTED]"
     assert scrubbed["nested"]["TOKEN"] == "[REDACTED]"
-
