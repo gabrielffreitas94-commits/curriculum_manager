@@ -1,9 +1,9 @@
 # 📄 PRD — ThothCVs AI: Smarter CV Management
 
-> **Versão:** 1.2  
-> **Data:** 2026-09-09  
-> **Autor:** Engenharia de Produto & Arquitetura de Software  
-> **Status:** Em Evolução — Itens 10 e 2 Concluídos (Aguardando Aprovação do Modelo de Dados)
+> **Versão:** 1.3  
+> **Data:** 2026-09-13  
+> **Autor:** Engenharia de Produto & Arquitetura de Software (SRE & Observabilidade)  
+> **Status:** Arquitetura de Observabilidade, Tracing Distribuído e Telemetria Concluídas (Seção 23 Adicionada)
 
 ---
 
@@ -1957,4 +1957,140 @@ A coleta analítica respeita a privacidade por design (zero dados confidenciais 
 - **Integração:** Testes de rotas FastAPI simulando requisições HTTP reais com `httpx.AsyncClient` e banco de dados de teste isolado.
 - **Acessibilidade (a11y):** Testes automatizados com `@axe-core/playwright` em todas as rotas da UI.
 - **E2E:** Fluxo crítico no frontend com Playwright (Login Mock ➔ Preenchimento de Vaga ➔ Preview ➔ Registro de Candidatura).
+
+---
+
+## 23. Arquitetura de Observabilidade, Telemetria & Confiabilidade (SRE)
+
+A plataforma ThothCVs AI implementa uma arquitetura de **Observabilidade e Telemetria de Sistemas** de nível empresarial, com rastreabilidade ponta a ponta (OpenTelemetry neutro), total desacoplamento arquitetural (Clean Architecture & Ports and Adapters) e conformidade estrita com o ecossistema Google Cloud Platform (Google Cloud Logging e Cloud Trace) e privacidade de dados (LGPD / AppSec).
+
+### 23.1 Princípios Fundamentais de Observabilidade
+
+1. **Zero Pontos Cegos (No Silent Failures):** Nenhuma operação de I/O externo (chamadas à API Gemini, banco de dados relacional, renderizadores de documentos WeasyPrint/DOCX ou requisições de rede) falha silenciosamente. Toda exceção é tratada e registrada com severidade compatível (`WARNING` para fallbacks degradados e `ERROR`/`CRITICAL` para quebras de contrato) acompanhada de metadados de contexto.
+2. **Independência de Fornecedor no Core:** O núcleo da aplicação (`core`, `domain`, `ports`, `services`) utiliza apenas bibliotecas agnósticas (`structlog` e OpenTelemetry). A tradução para formatos proprietários de nuvem (ex: Google Cloud Logging) é isolada na camada de adaptadores (`adapters/gcp_logging_adapter.py`) e injetada no *Composition Root* (`main.py`).
+3. **Rastreabilidade Distribuída Determinística:** Toda interação do usuário no frontend recebe ou gera um identificador único de correlação (`X-Correlation-ID`) que transita de forma ininterrupta por todas as camadas do sistema (Frontend ➔ Middleware ASGI ➔ ContextVars ➔ Services ➔ Adapters ➔ Resposta HTTP ➔ Error Boundaries).
+4. **Proteção Inviolável de Dados Pessoais (PII) e Segredos:** É terminantemente proibido registrar dados sensíveis em logs. Chaves de API, senhas, tokens JWT/Bearer e dados cadastrais são automaticamente higienizados e mascarados antes da emissão.
+
+---
+
+### 23.2 Ciclo de Vida do Correlation ID & Tracing Distribuído
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend (Next.js 15)
+    participant Middleware as ASGI Correlation Middleware
+    participant Context as Telemetry ContextVar
+    participant Service as Domain Services & Core
+    participant Adapter as External Adapters (Gemini / WeasyPrint)
+    participant CloudLogging as Google Cloud Logging / Trace
+
+    Client->>Client: Gera ou reutiliza Correlation ID (UUIDv4)
+    Client->>Middleware: Requisição HTTP com Header X-Correlation-ID
+    Middleware->>Context: set_correlation_id(correlation_id)
+    Middleware->>CloudLogging: Log estruturado: Início da Requisição
+    Middleware->>Service: Despacha processamento de negócio
+    Service->>Adapter: Executa operação externa
+    Adapter->>CloudLogging: Emite telemetria com correlation_id automático
+    Adapter-->>Service: Retorno da operação
+    Service-->>Middleware: Resposta do processamento
+    Middleware->>CloudLogging: Log estruturado: http_request_finished (latência, status)
+    Middleware-->>Client: Resposta HTTP com Header X-Correlation-ID
+    alt Em caso de erro na requisição
+        Client->>Client: ApiError captura X-Correlation-ID
+        Client->>Client: Error Boundary exibe ID de Suporte e cópia assistida
+    end
+```
+
+---
+
+### 23.3 Estrutura de Logging e Adaptador GCP
+
+O sistema adota o padrão de formatação dinâmica:
+- **Ambiente de Desenvolvimento (`ENVIRONMENT=development`):** Console Renderer colorido e legível, com formatação `key=value`.
+- **Ambiente de Produção (`ENVIRONMENT=production`):** JSON Renderer nativo estruturado para o agente do Cloud Logging, injetando campos padronizados:
+  - `logging.googleapis.com/trace`: Caminho completo do trace no Cloud Trace (`projects/<PROJECT>/traces/<CORRELATION_ID>`).
+  - `severity`: Severidade compatível (`INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+  - `httpRequest`: Metadados da requisição HTTP (método, URL, status code, latência, user-agent e IP remoto).
+
+---
+
+### 23.4 Telemetria Específica de GenAI & LLM Ops
+
+O adaptador `GeminiAIAdapter` e o motor `GroundingAuditEngine` emitem telemetria especializada para observabilidade operacional e custo de inferência:
+
+| Evento Semântico | Emissor | Atributos Rastreados | Finalidade SRE / FinOps |
+|---|---|---|---|
+| `gemini_job_analysis_completed` | `GeminiAIAdapter` | `duration_ms`, `model`, `prompt_tokens`, `candidates_tokens`, `total_tokens` | Monitorar consumo de quota, latência e custo por análise |
+| `gemini_job_analysis_failed` | `GeminiAIAdapter` | `duration_ms`, `model`, `error_type`, `error_message` | Rastrear taxas de erro (429 Rate Limit, 500, timeouts) |
+| `gemini_resume_generation_completed` | `GeminiAIAdapter` | `duration_ms`, `model`, `prompt_tokens`, `candidates_tokens`, `total_tokens`, `match_percentage`, `language` | Métricas de síntese de currículo e adesão semântica |
+| `gemini_resume_generation_failed` | `GeminiAIAdapter` | `duration_ms`, `model`, `error_type`, `error_message` | Detecção proativa de falhas na geração com IA |
+| `grounding_audit_completed` | `GroundingAuditEngine` | `is_valid`, `trust_score`, `severity`, `total_facts`, `hallucinations_count`, `verified_counts_by_tier`, `duration_ms` | Monitoramento da eficácia anti-alucinação e score de veracidade |
+| `grounding_sanitization_completed` | `GroundingAuditEngine` | `pruned_skills_count` | Volume de auto-podas algorítmicas realizadas |
+| `resume_generation_stage_started` | `ResumeService` | `stage`, `stage_name`, `resume_id` | Rastreabilidade dos 4 estágios do pipeline de geração |
+| `resume_generation_completed` | `ResumeService` | `resume_id`, `version_number`, `trust_score`, `total_duration_ms` | Desfecho com sucesso do caso de uso de geração |
+| `resume_generation_audit_rejected` | `ResumeService` | `trust_score`, `severity`, `hallucinations_count` | Alerta de rejeição por violação de guardrail de veracidade |
+
+---
+
+### 23.5 Telemetria de Renderização de Documentos
+
+Os adaptadores de exportação (`WeasyPrintAdapter` e `DocxAdapter`) monitoram performance e dependências do sistema operacional:
+
+- **`pdf_rendered_successfully`:** Emite `document_type="pdf"`, `pdf_size_bytes` e `duration_ms`.
+- **`pdf_render_dependencies_missing`:** Alerta preventivo com severidade `WARNING` caso bibliotecas C nativas (Pango, libcairo) não estejam presentes no container.
+- **`docx_rendered_successfully`:** Emite `document_type="docx"`, `docx_size_bytes`, `locale_code` e `duration_ms`.
+
+---
+
+### 23.6 Proteção de Dados & Privacidade (AppSec & LGPD em Telemetria)
+
+Implementação de filtros automáticos de higienização de logs no cliente e no servidor:
+- **Campos Redigidos Automaticamente:** `authorization`, `token`, `access_token`, `refresh_token`, `password`, `secret`, `api_key`, `apikey`, `credentials`, `client_secret`.
+- **Scrubbing de Strings Soltas:** Detecção por expressão regular de padrões de tokens (`Bearer [REDACTED]`) em payloads de exceção ou URLs.
+- **Identificação do Candidato:** Telemetria associa eventos apenas ao `user_id` anonimizado (UUID), nunca expondo nome completo, CPF ou dados bancários em eventos operacionais.
+
+---
+
+### 23.7 Observabilidade & Resiliência no Frontend (Next.js 15)
+
+O frontend implementa tratamento de erro de ponta a ponta com foco em acessibilidade e suporte ao usuário:
+1. **`frontend/src/lib/telemetry.ts`:**
+   - Utilitário estruturado de telemetria com métodos `info`, `warn`, `error` e `debug`.
+   - Geração de `correlation_id` resiliente com fallback RFC 4122 v4.
+2. **`frontend/src/lib/api.ts` & `ApiError`:**
+   - Injeção obrigatória de cabeçalho `X-Correlation-ID` em todas as requisições.
+   - Classe tipada `ApiError` que captura o correlation ID retornado pelo backend para triagem de suporte.
+3. **Error Boundaries Acessíveis (WCAG 2.1 AA):**
+   - **`frontend/src/app/error.tsx`:** Route Error Boundary acessível com `role="alert"`, `aria-live="polite"`, exibição em destaque do ID de Suporte / Correlação, botão de cópia assistida e botão de recuperação (`reset()`).
+   - **`frontend/src/app/global-error.tsx`:** Root Error Boundary de contingência para falhas catastróficas no layout base (`app/layout.tsx`).
+
+---
+
+### 23.8 Matriz de SLIs, SLOs e Alertas Proativos
+
+| Serviço / Rota | Indicador (SLI) | Meta (SLO) | Condição de Alerta | Severidade |
+|---|---|---|---|---|
+| `POST /api/v1/resumes/generate` | Taxa de Sucesso (HTTP 200) | >= 99.0% em janela móvel de 7 dias | Erros 5xx > 2% por 5 min | `CRITICAL` |
+| `POST /api/v1/resumes/generate` | Latência P95 (Geração Gemini + Audit) | < 15.0 segundos | Latência P95 > 18s por 10 min | `WARNING` |
+| `POST /api/v1/resumes/match-preview` | Latência P95 (Cálculo Semântico) | < 3.0 segundos | Latência P95 > 5s por 10 min | `WARNING` |
+| `GET /api/v1/resumes/{id}/export/pdf` | Taxa de Sucesso de Renderização | >= 99.9% | Falhas consecutivas >= 3 | `CRITICAL` |
+| Motor Anti-Alucinação | Taxa de Grounding Válido | >= 95.0% dos currículos gerados | Rejeições de auditoria > 10% por 1h | `WARNING` |
+| Taxa de HTTP 429 (BYOK Anômalo) | % de requisições com Rate Limit | < 1.0% do tráfego geral | > 15% de usuários com 429 em 15 min | `WARNING` |
+
+> [!NOTE]
+> **Observabilidade em Arquitetura BYOK (Bring Your Own Key):**
+> No modelo BYOK do ThothCVs AI, as cotas de requisição (RPM/RPD) pertencem à conta individual de cada usuário no Google Cloud / Google AI Studio, e não a uma chave centralizada da plataforma:
+> - **Comportamento de UX (Usuário Final):** Quando um usuário específico atinge seu limite de cota individual (HTTP 429), a API retorna uma mensagem clara e orientativa na interface (*"Sua chave de API do Gemini atingiu o limite de requisições do seu plano no Google AI Studio. Aguarde alguns instantes ou verifique as cotas no console Google Cloud."*), sem disparar alertas desnecessários para a equipe técnica.
+> - **Comportamento de SRE (Confiabilidade da Plataforma):** O alerta de telemetria para HTTP 429 monitora anomalias sistêmicas — como possíveis loops ou retries excessivos no frontend, ou instabilidade global nos servidores da Google afetando múltiplos usuários simultâneos (> 15% dos usuários ativos).
+
+---
+
+### 23.9 Quality Gates Automatizados no Pipeline de CI/CD
+
+O repositório impõe 3 portões de qualidade invioláveis no GitHub Actions antes de permitir qualquer merge na branch `main`:
+1. **Architecture Gate (`check_hexagonal_architecture.py`):** Análise estática via AST do Python garantindo isolamento estrito das fronteiras hexagonais (Core, Domain e Ports não podem importar Adapters ou Nuvem).
+2. **Security Anti-Regression Guardrail Gate (`check_security_guardrails.py`):** Impede que desenvolvedores ou modelos de IA modifiquem ou afrouxem testes blindados contendo docstrings de segurança (`VETOR DE AMEAÇA:` ou `PREMISSA DO GUARDRAIL`).
+3. **100% Code Coverage Gate:** Exige 100.00% de cobertura de código comprovada no backend (`--cov-fail-under=100`) e 100.00% de cobertura de linhas no frontend (`vitest --coverage` com threshold de 100%).
+
 
