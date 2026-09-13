@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { ApiClient } from "@/lib/api";
+import { ApiClient, ApiError } from "@/lib/api";
 
 describe("ApiClient", () => {
   const originalFetch = global.fetch;
@@ -14,7 +14,7 @@ describe("ApiClient", () => {
   });
 
   describe("Token & Headers Management", () => {
-    it("should set custom token and send it in Authorization header", async () => {
+    it("should set custom token and send it in Authorization header with X-Correlation-ID", async () => {
       ApiClient.setToken("custom_bearer_jwt");
       let capturedHeaders: HeadersInit | undefined;
 
@@ -31,7 +31,32 @@ describe("ApiClient", () => {
       expect(capturedHeaders).toEqual({
         "Content-Type": "application/json",
         Authorization: "Bearer custom_bearer_jwt",
+        "X-Correlation-ID": expect.any(String),
       });
+    });
+
+    it("should throw ApiError containing status and correlationId extracted from response headers", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        headers: {
+          get: (headerName: string) =>
+            headerName.toLowerCase() === "x-correlation-id"
+              ? "backend-trace-uuid-1234"
+              : null,
+        },
+      });
+
+      try {
+        await ApiClient.getApplications();
+        expect.unreachable("Deveria ter lançado ApiError");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        const apiError = err as ApiError;
+        expect(apiError.status).toBe(403);
+        expect(apiError.correlationId).toBe("backend-trace-uuid-1234");
+        expect(apiError.message).toBe("Erro ao buscar candidaturas.");
+      }
     });
   });
 
