@@ -2076,7 +2076,13 @@ O frontend implementa tratamento de erro de ponta a ponta com foco em acessibili
 | `POST /api/v1/resumes/match-preview` | Latência P95 (Cálculo Semântico) | < 3.0 segundos | Latência P95 > 5s por 10 min | `WARNING` |
 | `GET /api/v1/resumes/{id}/export/pdf` | Taxa de Sucesso de Renderização | >= 99.9% | Falhas consecutivas >= 3 | `CRITICAL` |
 | Motor Anti-Alucinação | Taxa de Grounding Válido | >= 95.0% dos currículos gerados | Rejeições de auditoria > 10% por 1h | `WARNING` |
-| Cota da API Gemini | Taxa de HTTP 429 (Rate Limit) | < 0.1% das chamadas | Respostas 429 > 3 consecutivas | `CRITICAL` (Page SRE) |
+| Taxa de HTTP 429 (BYOK Anômalo) | % de requisições com Rate Limit | < 1.0% do tráfego geral | > 15% de usuários com 429 em 15 min | `WARNING` |
+
+> [!NOTE]
+> **Observabilidade em Arquitetura BYOK (Bring Your Own Key):**
+> No modelo BYOK do ThothCVs AI, as cotas de requisição (RPM/RPD) pertencem à conta individual de cada usuário no Google Cloud / Google AI Studio, e não a uma chave centralizada da plataforma:
+> - **Comportamento de UX (Usuário Final):** Quando um usuário específico atinge seu limite de cota individual (HTTP 429), a API retorna uma mensagem clara e orientativa na interface (*"Sua chave de API do Gemini atingiu o limite de requisições do seu plano no Google AI Studio. Aguarde alguns instantes ou verifique as cotas no console Google Cloud."*), sem disparar alertas desnecessários para a equipe técnica.
+> - **Comportamento de SRE (Confiabilidade da Plataforma):** O alerta de telemetria para HTTP 429 monitora anomalias sistêmicas — como possíveis loops ou retries excessivos no frontend, ou instabilidade global nos servidores da Google afetando múltiplos usuários simultâneos (> 15% dos usuários ativos).
 
 ---
 
