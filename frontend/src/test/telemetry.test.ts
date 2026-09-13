@@ -154,4 +154,55 @@ describe("Frontend Telemetry & Correlation ID", () => {
       expect(payload.render_ms).toBe(12.4);
     });
   });
+
+  describe("Security Guardrails (Anti-Regression)", () => {
+    it("should strictly redact bearer tokens and credentials in deeply nested log contexts", () => {
+      /**
+       * VETOR DE AMEAÇA:
+       * - OWASP A09:2021 — Security Logging and Monitoring Failures.
+       * - CWE-532: Insertion of Sensitive Information into Log File.
+       * - LGPD Art. 46: Vazamento acidental de tokens JWT e credenciais no console do navegador,
+       *   onde extensões maliciosas ou scripts de terceiros podem inspecionar a saída.
+       *
+       * COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+       * - Qualquer contexto estruturado emitido pelo frontendLogger contendo chaves como token,
+       *   password, authorization ou strings contendo Bearer tokens deve ser higienizado
+       *   incondicionalmente antes de atingir os métodos do console.
+       *
+       * RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+       * - É terminantemente proibido remover o middleware de higienização de logs do frontend
+       *   ou desativar a redação em ambiente de desenvolvimento/teste.
+       *
+       * PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+       * - O console.error não pode conter os valores originais sensíveis e deve registrar as
+       *   constantes "[REDACTED]" e "Bearer [REDACTED]".
+       */
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const sensitivePayload = {
+        authHeader: "Bearer secret_session_token_12345",
+        account_details: {
+          password: "MySecretPassword!",
+          api_key: "AIzaSyCustomKeyXYZ",
+        },
+        credentials: "raw_secret_credential_blob",
+      };
+
+      const emitted = frontendLogger.error("security_test_event", sensitivePayload);
+
+      expect(emitted.authHeader).toBe("Bearer [REDACTED]");
+      expect((emitted.account_details as Record<string, unknown>).password).toBe("[REDACTED]");
+      expect((emitted.account_details as Record<string, unknown>).api_key).toBe("[REDACTED]");
+      expect(emitted.credentials).toBe("[REDACTED]");
+      expect(JSON.stringify(emitted)).not.toContain("secret_session_token_12345");
+      expect(JSON.stringify(emitted)).not.toContain("MySecretPassword!");
+      expect(JSON.stringify(emitted)).not.toContain("raw_secret_credential_blob");
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[ERROR] security_test_event",
+        expect.objectContaining({
+          authHeader: "Bearer [REDACTED]",
+        })
+      );
+    });
+  });
 });

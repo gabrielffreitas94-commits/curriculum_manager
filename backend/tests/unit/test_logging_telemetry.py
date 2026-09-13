@@ -292,3 +292,96 @@ def test_gcp_cloud_logging_without_http_method():
     processed = gcp_severity_processor(None, "info", event)
     assert processed["severity"] == "INFO"
     assert "httpRequest" not in processed
+
+
+@pytest.mark.asyncio
+async def test_guardrail_correlation_context_isolation_across_async_contexts():
+    """Valida que o contexto de telemetria é estritamente isolado entre tarefas assíncronas.
+
+    VETOR DE AMEAÇA:
+    - OWASP A01:2021 — Broken Access Control / Cross-Tenant Data Leakage in Logs.
+    - CWE-200: Exposure of Sensitive Information to an Unauthorized Actor.
+    - Impacto Potencial: Vazamento de Correlation ID de um usuário para requisições de outros
+      usuários em servidores ASGI assíncronos que reutilizam threads/event-loops, comprometendo
+      a rastreabilidade e a conformidade com a LGPD em auditorias forenses.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - Cada tarefa assíncrona ou ciclo de requisição deve ter suas ContextVars estritamente isoladas.
+      A limpeza via clear_telemetry_context() deve garantir que nenhuma tarefa subsequente herde
+      identificadores de sessões anteriores.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - É terminantemente proibido utilizar variáveis globais comuns ou singletons mutáveis em vez
+      de contextvars.ContextVar para armazenar o correlation_id e user_id.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - O teste valida que após clear_telemetry_context(), get_correlation_id()
+      retorna incondicionalmente None.
+    """
+    import asyncio
+
+    async def task_a():
+        set_correlation_id("corr-tenant-alpha")
+        set_user_id("user-tenant-alpha")
+        await asyncio.sleep(0.01)
+        assert get_correlation_id() == "corr-tenant-alpha"
+        assert get_user_id() == "user-tenant-alpha"
+        clear_telemetry_context()
+        assert get_correlation_id() is None
+        assert get_user_id() is None
+
+    async def task_b():
+        await asyncio.sleep(0.005)
+        # Contexto independente não deve enxergar tenant alpha
+        assert get_correlation_id() is None
+        assert get_user_id() is None
+        set_correlation_id("corr-tenant-beta")
+        await asyncio.sleep(0.01)
+        assert get_correlation_id() == "corr-tenant-beta"
+        clear_telemetry_context()
+
+    await asyncio.gather(task_a(), task_b())
+    assert get_correlation_id() is None
+    assert get_user_id() is None
+
+
+def test_guardrail_pii_scrubber_case_insensitivity_and_structure_resilience():
+    """Valida que a sanitização de PII funciona de forma estrita sem distinção de
+    maiúsculas/minúsculas.
+
+    VETOR DE AMEAÇA:
+    - OWASP A09:2021 — Security Logging and Monitoring Failures.
+    - CWE-532: Insertion of Sensitive Information into Log File.
+    - Impacto Potencial: Vazamento de segredos em chaves com capitalização mista ou não usual
+      (ex: 'pAsSwOrD', 'AUTHORIZATION', 'Api_Key') em logs de produção.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O scrubber de PII deve realizar o matching case-insensitive de chaves e ocultar os valores
+      incondicionalmente para "[REDACTED]".
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - É terminantemente proibido depender de comparações estritas de strings com distinção entre
+      maiúsculas e minúsculas ao auditar chaves confidenciais.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Toda chave confidencial em qualquer variação de caixa deve ter seu valor estritamente
+      substituído pela constante "[REDACTED]".
+    """
+    event = {
+        "event": "probe_security",
+        "pAsSwOrD": "PlainSecret123",
+        "AUTHORIZATION": "Bearer token123",
+        "Api_Key": "AIzaSyCustomKey",
+        "nested": {
+            "SECRET": "deepSecret",
+            "TOKEN": "deepToken",
+        },
+    }
+
+    scrubbed = pii_and_secrets_scrubber(None, "info", event)
+
+    assert scrubbed["pAsSwOrD"] == "[REDACTED]"
+    assert scrubbed["AUTHORIZATION"] == "[REDACTED]"
+    assert scrubbed["Api_Key"] == "[REDACTED]"
+    assert scrubbed["nested"]["SECRET"] == "[REDACTED]"
+    assert scrubbed["nested"]["TOKEN"] == "[REDACTED]"
