@@ -5,8 +5,13 @@ HTML para PDF com isolamento de dependências, tratamento de ambiente e proteç�
 estrita contra SSRF e LFI através de um url_fetcher bloqueante.
 """
 
+import time
 from collections.abc import Callable
 from typing import Any
+
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def blocked_url_fetcher(url: str, timeout: int = 10, ssl_context: Any = None) -> dict[str, Any]:
@@ -52,9 +57,18 @@ class WeasyPrintAdapter:
             RuntimeError: Caso as bibliotecas de sistema C (GTK/Pango/GObject)
                 ou o pacote WeasyPrint não estejam disponíveis no sistema operacional.
         """
+        start_time = time.perf_counter()
         try:
             import weasyprint
         except (ImportError, OSError) as exc:
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+            logger.error(
+                "pdf_render_dependencies_missing",
+                document_type="pdf",
+                duration_ms=duration_ms,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
             raise RuntimeError(
                 "O motor de renderização WeasyPrint requer bibliotecas C nativas "
                 "(libgobject, pango, cairo) instaladas no sistema operacional: "
@@ -66,4 +80,11 @@ class WeasyPrintAdapter:
             url_fetcher=self._url_fetcher,
         )
         pdf_bytes: bytes = html_renderer.write_pdf()
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.info(
+            "pdf_rendered_successfully",
+            document_type="pdf",
+            pdf_size_bytes=len(pdf_bytes),
+            duration_ms=duration_ms,
+        )
         return pdf_bytes

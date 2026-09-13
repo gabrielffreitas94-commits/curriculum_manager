@@ -8,6 +8,7 @@ Orquestra o pipeline em 4 estágios:
 """
 
 import os
+import time
 import uuid
 from typing import Any
 
@@ -24,10 +25,13 @@ from app.api.v1.schemas.resume import (
 )
 from app.core.crypto import crypto_service
 from app.core.grounding_audit import GroundingAuditEngine
+from app.core.logging import get_logger
 from app.core.vector_match import VectorMatchEngine
 from app.domain.models import Application, GeneratedResume, PromptSkill, User
 from app.ports.ai_port import AIError, JobAnalysisResult, MissingApiKeyError
 from app.services.profile_service import ProfileService
+
+logger = get_logger(__name__)
 
 # Trava global em memória para evitar requisições concorrentes da mesma conta
 _ACTIVE_GENERATIONS: set[uuid.UUID] = set()
@@ -134,6 +138,8 @@ class ResumeService:
         _ACTIVE_GENERATIONS.add(user.id)
 
         try:
+            total_start_time = time.perf_counter()
+
             # Validação prévia de candidatura (fail-fast antes de invocar LLM)
             application_id = payload.application_id
             if application_id is None and not payload.create_application:
@@ -158,6 +164,12 @@ class ResumeService:
             adapter = self._resolve_gemini_adapter(user)
 
             # 1. Recupera o Dossiê Factual (Grounding Context)
+            logger.info(
+                "resume_generation_stage_started",
+                stage=1,
+                stage_name="ground_truth_retrieval",
+                user_id=str(user.id),
+            )
             profile_service = ProfileService(self._db)
             raw_dossier = await profile_service.get_full_dossier(user.id)
 
@@ -183,6 +195,12 @@ class ResumeService:
             }
 
             # 2. Resolução do Prompt Skill (Template de Persona)
+            logger.info(
+                "resume_generation_stage_started",
+                stage=2,
+                stage_name="prompt_skill_resolution",
+                prompt_skill_slug=payload.prompt_skill_slug,
+            )
             prompt_skill_stmt = select(PromptSkill).where(
                 PromptSkill.slug == payload.prompt_skill_slug
             )
@@ -196,6 +214,12 @@ class ResumeService:
             )
 
             # 3. Estágio 3: Síntese Estruturada via LLM
+            logger.info(
+                "resume_generation_stage_started",
+                stage=3,
+                stage_name="llm_synthesis",
+                language=payload.language,
+            )
             generated = await adapter.generate_resume(
                 job_description=payload.job_description,
                 user_dossier=ground_truth,
@@ -204,14 +228,28 @@ class ResumeService:
             )
 
             # 4. Estágio 4: Auditoria Algorítmica Anti-Alucinação
+            logger.info(
+                "resume_generation_stage_started",
+                stage=4,
+                stage_name="grounding_audit",
+            )
             content_dict = generated.model_dump()
             audit = self._audit_engine.audit(content_dict, ground_truth)
 
             if not audit.is_valid:
+                total_duration_ms = round((time.perf_counter() - total_start_time) * 1000, 2)
                 culprit = (
                     audit.hallucinations[0].description
                     if audit.hallucinations
                     else "Score de confiança insuficiente"
+                )
+                logger.warning(
+                    "resume_generation_audit_rejected",
+                    user_id=str(user.id),
+                    trust_score=audit.trust_score,
+                    hallucinations_count=len(audit.hallucinations),
+                    culprit=culprit,
+                    total_duration_ms=total_duration_ms,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -260,6 +298,18 @@ class ResumeService:
             self._db.add(resume)
             await self._db.flush()
 
+            total_duration_ms = round((time.perf_counter() - total_start_time) * 1000, 2)
+            logger.info(
+                "resume_generation_completed",
+                resume_id=str(resume.id),
+                user_id=str(user.id),
+                application_id=str(application_id),
+                version_number=resume.version_number,
+                match_percentage=resume.match_percentage,
+                trust_score=audit.trust_score,
+                total_duration_ms=total_duration_ms,
+            )
+
             return ResumeGenerateResponse(
                 resume_id=resume.id,
                 application_id=application_id,
@@ -286,6 +336,7 @@ class ResumeService:
         Returns:
             MatchPreviewResponse com pontuação e matriz de correspondência.
         """
+        start_time = time.perf_counter()
         adapter = self._resolve_gemini_adapter(user)
         job_analysis = await adapter.analyze_job(job_description)
 
@@ -307,6 +358,16 @@ class ResumeService:
 
         engine = VectorMatchEngine()
         result = engine.evaluate_match(dossier=dossier, job_analysis=job_analysis)
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+        logger.info(
+            "resume_match_preview_completed",
+            user_id=str(user.id),
+            match_percentage=result.match_percentage,
+            mandatory_count=len(result.mandatory_matches),
+            desirable_count=len(result.desirable_matches),
+            duration_ms=duration_ms,
+        )
 
         return MatchPreviewResponse(
             match_percentage=result.match_percentage,

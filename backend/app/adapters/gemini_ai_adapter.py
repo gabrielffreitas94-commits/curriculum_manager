@@ -5,11 +5,13 @@ BYOK (Bring Your Own Key) e injeção do contexto factual do candidato.
 """
 
 import json
+import time
 from typing import Any
 
 from google import genai
 from google.genai import types
 
+from app.core.logging import get_logger
 from app.ports.ai_port import (
     AIError,
     AIPort,
@@ -18,6 +20,8 @@ from app.ports.ai_port import (
     JobAnalysisResult,
     MissingApiKeyError,
 )
+
+logger = get_logger(__name__)
 
 
 def sanitize_untrusted_job_description(text: str) -> str:
@@ -121,6 +125,7 @@ class GeminiAIAdapter(AIPort):
             "</untrusted_job_posting>"
         )
 
+        start_time = time.perf_counter()
         try:
             response = client.models.generate_content(
                 model="gemini-1.5-flash",
@@ -132,14 +137,42 @@ class GeminiAIAdapter(AIPort):
                     temperature=0.2,
                 ),
             )
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
             if not response.text:
+                logger.error(
+                    "gemini_job_analysis_empty_response",
+                    model="gemini-1.5-flash",
+                    duration_ms=duration_ms,
+                )
                 raise GenerationError("Gemini retornou uma resposta vazia para a análise de vaga.")
+
+            usage = getattr(response, "usage_metadata", None)
+            prompt_tokens = getattr(usage, "prompt_token_count", None)
+            candidates_tokens = getattr(usage, "candidates_token_count", None)
+            total_tokens = getattr(usage, "total_token_count", None)
+
+            logger.info(
+                "gemini_job_analysis_completed",
+                model="gemini-1.5-flash",
+                duration_ms=duration_ms,
+                prompt_tokens=prompt_tokens if isinstance(prompt_tokens, int) else None,
+                candidates_tokens=candidates_tokens if isinstance(candidates_tokens, int) else None,
+                total_tokens=total_tokens if isinstance(total_tokens, int) else None,
+            )
 
             data = json.loads(response.text)
             return JobAnalysisResult(**data)
         except AIError:
             raise
         except Exception as exc:
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+            logger.error(
+                "gemini_job_analysis_failed",
+                model="gemini-1.5-flash",
+                duration_ms=duration_ms,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
             raise AIError(f"Falha na análise semântica da vaga com Gemini: {exc}") from exc
 
     async def generate_resume(
@@ -205,6 +238,7 @@ class GeminiAIAdapter(AIPort):
             "candidato para esta oportunidade específica."
         )
 
+        start_time = time.perf_counter()
         try:
             response = client.models.generate_content(
                 model="gemini-1.5-flash",
@@ -216,12 +250,44 @@ class GeminiAIAdapter(AIPort):
                     temperature=0.3,
                 ),
             )
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
             if not response.text:
+                logger.error(
+                    "gemini_resume_generation_empty_response",
+                    model="gemini-1.5-flash",
+                    duration_ms=duration_ms,
+                )
                 raise GenerationError("Gemini retornou conteúdo vazio na geração do currículo.")
 
+            usage = getattr(response, "usage_metadata", None)
+            prompt_tokens = getattr(usage, "prompt_token_count", None)
+            candidates_tokens = getattr(usage, "candidates_token_count", None)
+            total_tokens = getattr(usage, "total_token_count", None)
+
             payload_data = json.loads(response.text)
-            return FullGeneratedResumePayload(**payload_data)
+            resume_payload = FullGeneratedResumePayload(**payload_data)
+
+            logger.info(
+                "gemini_resume_generation_completed",
+                model="gemini-1.5-flash",
+                duration_ms=duration_ms,
+                prompt_tokens=prompt_tokens if isinstance(prompt_tokens, int) else None,
+                candidates_tokens=candidates_tokens if isinstance(candidates_tokens, int) else None,
+                total_tokens=total_tokens if isinstance(total_tokens, int) else None,
+                match_percentage=resume_payload.match_percentage,
+                language=language,
+            )
+
+            return resume_payload
         except AIError:
             raise
         except Exception as exc:
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+            logger.error(
+                "gemini_resume_generation_failed",
+                model="gemini-1.5-flash",
+                duration_ms=duration_ms,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
             raise GenerationError(f"Falha na síntese estruturada do currículo: {exc}") from exc
