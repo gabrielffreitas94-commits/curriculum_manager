@@ -7,7 +7,7 @@ import pytest
 from fastapi import Request
 from httpx import AsyncClient
 
-from app.api.web import get_authenticated_web_user
+from app.api.web import get_authenticated_web_user, login_google, login_linkedin
 from app.domain.models import User
 
 
@@ -33,7 +33,7 @@ async def test_welcome_page_renders_successfully(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_modal_renders_successfully(async_client: AsyncClient):
-    """Valida renderização do fragmento HTML do modal de login com Google, LinkedIn e E-mail."""
+    """Valida renderização do fragmento HTML do modal de login com Google e LinkedIn."""
     response = await async_client.get("/auth/modal")
 
     assert response.status_code == 200
@@ -45,10 +45,8 @@ async def test_login_modal_renders_successfully(async_client: AsyncClient):
     assert "Continuar com o Google" in content
     assert "btn-login-linkedin" in content
     assert "Continuar com o LinkedIn" in content
-    assert "login-email" in content
-    assert "login-password" in content
-    assert "btn-submit-email-login" in content
     assert "closeModal" in content
+    assert "Termos de Serviço" in content
 
 
 @pytest.mark.asyncio
@@ -70,139 +68,56 @@ async def test_static_css_file_is_served(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_auth_views_render_successfully(async_client: AsyncClient):
-    """Valida renderização dos cards parciais para alternância fluida no modal via HTMX."""
-    # 1. Login card view
-    res_login = await async_client.get("/auth/login-view")
-    assert res_login.status_code == 200
-    assert "auth-modal-card" in res_login.text
-    assert "Continuar com o Google" in res_login.text
-    assert "Cadastre-se gratuitamente" in res_login.text
+async def test_google_login_flow(async_client: AsyncClient):
+    """Valida fluxo de login social com Google, persistência e atualização da interface."""
+    # 1. Primeiro login com Google (cria novo usuário)
+    res_login1 = await async_client.post("/auth/login/google")
+    assert res_login1.status_code == 200
+    assert res_login1.headers.get("HX-Refresh") == "true"
+    assert "session_token" in res_login1.cookies
+    assert res_login1.cookies.get("session_token") == "mock_google_user"
 
-    # 2. Register card view
-    res_reg = await async_client.get("/auth/register-view")
-    assert res_reg.status_code == 200
-    assert "auth-modal-card" in res_reg.text
-    assert "Criar Conta" in res_reg.text
-    assert "reg-name" in res_reg.text
-    assert "reg-password-confirm" in res_reg.text
-
-    # 3. Forgot password card view
-    res_fp = await async_client.get("/auth/forgot-password-view")
-    assert res_fp.status_code == 200
-    assert "auth-modal-card" in res_fp.text
-    assert "Recuperar Senha" in res_fp.text
-    assert "forgot-email" in res_fp.text
-
-
-@pytest.mark.asyncio
-async def test_register_submit_validation_errors(async_client: AsyncClient):
-    """Valida tratamento de erros de validação no formulário de cadastro."""
-    # Campos vazios
-    r1 = await async_client.post("/auth/register", data={"full_name": "", "email": "", "password": "", "password_confirm": ""})
-    assert r1.status_code == 200
-    assert "Todos os campos são obrigatórios" in r1.text
-
-    # Senhas divergentes
-    r2 = await async_client.post(
-        "/auth/register",
-        data={"full_name": "Ana Silva", "email": "ana@example.com", "password": "password123", "password_confirm": "mismatch456"}
-    )
-    assert r2.status_code == 200
-    assert "As senhas informadas não coincidem" in r2.text
-
-    # Senha curta (< 6)
-    r3 = await async_client.post(
-        "/auth/register",
-        data={"full_name": "Ana Silva", "email": "ana@example.com", "password": "123", "password_confirm": "123"}
-    )
-    assert r3.status_code == 200
-    assert "A senha deve conter no mínimo 6 caracteres" in r3.text
-
-
-@pytest.mark.asyncio
-async def test_register_login_and_logout_flow(async_client: AsyncClient):
-    """Valida fluxo de cadastro de novo usuário, login recorrente e logout com cookies e Header."""
-    test_email = "dev_ui_user@test.com"
-    test_name = "Dev UI User"
-
-    # 1. Cadastro com sucesso
-    res_reg = await async_client.post(
-        "/auth/register",
-        data={
-            "full_name": test_name,
-            "email": test_email,
-            "password": "strongPassword123",
-            "password_confirm": "strongPassword123",
-        },
-    )
-    assert res_reg.status_code == 200
-    assert res_reg.headers.get("HX-Refresh") == "true"
-    assert "session_token" in res_reg.cookies
-
-    # 2. Cadastro duplicado deve retornar erro amigável
-    res_dup = await async_client.post(
-        "/auth/register",
-        data={
-            "full_name": test_name,
-            "email": test_email,
-            "password": "strongPassword123",
-            "password_confirm": "strongPassword123",
-        },
-    )
-    assert res_dup.status_code == 200
-    assert "Este e-mail já está cadastrado" in res_dup.text
-
-    # 3. Acessar página inicial autenticado
-    res_home = await async_client.get("/", cookies=res_reg.cookies)
+    # 2. Acessa a home e verifica se o usuário está autenticado no header
+    res_home = await async_client.get("/", cookies=res_login1.cookies)
     assert res_home.status_code == 200
-    assert test_name in res_home.text
+    assert "Usuário Google" in res_home.text
     assert "logout-btn" in res_home.text
 
-    # 4. Login com credenciais inválidas
-    res_bad_login = await async_client.post(
-        "/auth/login",
-        data={"email": "nonexistent@test.com", "password": "wrongpassword"}
-    )
-    assert res_bad_login.status_code == 200
-    assert "Credenciais inválidas" in res_bad_login.text
+    # 3. Segundo login com Google (recupera usuário existente)
+    res_login2 = await async_client.post("/auth/login/google")
+    assert res_login2.status_code == 200
+    assert res_login2.headers.get("HX-Refresh") == "true"
 
-    # 5. Login com campos vazios
-    res_empty_login = await async_client.post(
-        "/auth/login",
-        data={"email": "", "password": ""}
-    )
-    assert res_empty_login.status_code == 200
-    assert "Informe o e-mail e a senha" in res_empty_login.text
 
-    # 6. Login com sucesso
-    res_good_login = await async_client.post(
-        "/auth/login",
-        data={"email": test_email, "password": "strongPassword123"}
-    )
-    assert res_good_login.status_code == 200
-    assert res_good_login.headers.get("HX-Refresh") == "true"
-    assert "session_token" in res_good_login.cookies
+@pytest.mark.asyncio
+async def test_linkedin_login_flow(async_client: AsyncClient):
+    """Valida fluxo de login social com LinkedIn, persistência e atualização da interface."""
+    # 1. Primeiro login com LinkedIn (cria novo usuário)
+    res_login1 = await async_client.post("/auth/login/linkedin")
+    assert res_login1.status_code == 200
+    assert res_login1.headers.get("HX-Refresh") == "true"
+    assert "session_token" in res_login1.cookies
+    assert res_login1.cookies.get("session_token") == "mock_linkedin_user"
 
-    # 7. Logout
+    # 2. Acessa a home e verifica se o usuário está autenticado no header
+    res_home = await async_client.get("/", cookies=res_login1.cookies)
+    assert res_home.status_code == 200
+    assert "Usuário LinkedIn" in res_home.text
+    assert "logout-btn" in res_home.text
+
+    # 3. Segundo login com LinkedIn (recupera usuário existente)
+    res_login2 = await async_client.post("/auth/login/linkedin")
+    assert res_login2.status_code == 200
+    assert res_login2.headers.get("HX-Refresh") == "true"
+
+
+@pytest.mark.asyncio
+async def test_logout_flow(async_client: AsyncClient):
+    """Valida encerramento da sessão com remoção do cookie e refresh da tela."""
     res_logout = await async_client.post("/auth/logout")
     assert res_logout.status_code == 200
     assert res_logout.headers.get("HX-Refresh") == "true"
 
-
-@pytest.mark.asyncio
-async def test_forgot_password_submission(async_client: AsyncClient):
-    """Valida solicitação de recuperação de senha com feedback visual."""
-    # E-mail inválido
-    r_bad = await async_client.post("/auth/forgot-password", data={"email": "invalid-email"})
-    assert r_bad.status_code == 200
-    assert "Informe um endereço de e-mail válido" in r_bad.text
-
-    # E-mail válido
-    r_ok = await async_client.post("/auth/forgot-password", data={"email": "user@example.com"})
-    assert r_ok.status_code == 200
-    assert "E-mail de recuperação enviado" in r_ok.text
-    assert "user@example.com" in r_ok.text
 
 
 @pytest.mark.asyncio
@@ -240,6 +155,43 @@ async def test_get_authenticated_web_user_direct():
     user_found = await get_authenticated_web_user(req_with_cookie, db_mock)
     assert user_found == user_mock
     assert user_found.email == "direct@test.com"
+
+
+@pytest.mark.asyncio
+async def test_social_login_direct():
+    """Valida execução direta dos handlers de login social com Google e LinkedIn."""
+    # 1. Google - novo usuário
+    db_mock = MagicMock()
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = None
+    db_mock.execute = AsyncMock(return_value=mock_res)
+    db_mock.flush = AsyncMock()
+    db_mock.commit = AsyncMock()
+
+    resp_google_new = await login_google(request=MagicMock(spec=Request), db=db_mock)
+    assert resp_google_new.status_code == 200
+    assert resp_google_new.headers.get("HX-Refresh") == "true"
+    assert "session_token" in resp_google_new.headers.get("set-cookie", "")
+
+    # 2. Google - usuário já existente
+    user_existing = User(id=uuid.uuid4(), firebase_uid="mock_uid_mock_google_user", email="usuario.google@exemplo.com")
+    mock_res.scalar_one_or_none.return_value = user_existing
+    resp_google_exist = await login_google(request=MagicMock(spec=Request), db=db_mock)
+    assert resp_google_exist.status_code == 200
+
+    # 3. LinkedIn - novo usuário
+    mock_res.scalar_one_or_none.return_value = None
+    resp_linkedin_new = await login_linkedin(request=MagicMock(spec=Request), db=db_mock)
+    assert resp_linkedin_new.status_code == 200
+    assert resp_linkedin_new.headers.get("HX-Refresh") == "true"
+    assert "session_token" in resp_linkedin_new.headers.get("set-cookie", "")
+
+    # 4. LinkedIn - usuário já existente
+    user_li_existing = User(id=uuid.uuid4(), firebase_uid="mock_uid_mock_linkedin_user", email="usuario.linkedin@exemplo.com")
+    mock_res.scalar_one_or_none.return_value = user_li_existing
+    resp_linkedin_exist = await login_linkedin(request=MagicMock(spec=Request), db=db_mock)
+    assert resp_linkedin_exist.status_code == 200
+
 
 
 
