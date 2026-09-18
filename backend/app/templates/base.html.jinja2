@@ -37,14 +37,47 @@
 
             <!-- Ações e Tema -->
             <div class="flex items-center space-x-4">
-                <a href="/api/v1/docs" target="_blank" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
-                    API Docs
-                </a>
                 <button 
                     type="button" 
+                    id="theme-toggle"
+                    role="switch"
+                    aria-checked="false"
+                    aria-label="Alternar modo escuro e claro"
                     onclick="toggleTheme()" 
-                    class="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer">
-                    Alternar Tema
+                    class="relative flex items-center w-[132px] h-10 px-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-200 dark:bg-slate-800 transition-colors duration-300 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-slate-400">
+                    
+                    <!-- Texto DARK MODE (visível no modo escuro, posicionado à esquerda) -->
+                    <span class="absolute left-3.5 text-[10px] font-bold tracking-wider uppercase text-slate-300 opacity-0 dark:opacity-100 transition-opacity duration-300 pointer-events-none">
+                        DARK MODE
+                    </span>
+
+                    <!-- Texto LIGHT MODE (visível no modo claro, posicionado à direita) -->
+                    <span class="absolute right-3.5 text-[10px] font-bold tracking-wider uppercase text-slate-600 opacity-100 dark:opacity-0 transition-opacity duration-300 pointer-events-none">
+                        LIGHT MODE
+                    </span>
+
+                    <!-- Botão Deslizante Branco (Thumb) -->
+                    <span class="relative z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-md transform transition-transform duration-300 ease-in-out dark:translate-x-[92px]">
+                        <!-- Ícone Sol (Modo Claro) -->
+                        <svg class="w-4 h-4 text-slate-600 block dark:hidden transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+
+                        <!-- Ícone Lua com Estrelinhas (Modo Escuro) -->
+                        <svg class="w-4 h-4 text-slate-700 hidden dark:block transition-transform duration-300" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+                            <path d="M19 3l.8 1.7L21.5 5.5l-1.7.8L19 8l-.8-1.7-1.7-.8 1.7-.8L19 3z"></path>
+                            <path d="M14 1l.5 1.1 1.1.5-1.1.5-.5 1.1-.5-1.1-1.1-.5 1.1-.5.5-1.1z"></path>
+                        </svg>
+                    </span>
                 </button>
             </div>
         </div>
@@ -65,10 +98,22 @@
 
     <!-- Script Global de Controle do Tema -->
     <script>
+        function updateToggleAria(isDark) {
+            const toggleBtn = document.getElementById('theme-toggle');
+            if (toggleBtn) {
+                toggleBtn.setAttribute('aria-checked', isDark ? 'true' : 'false');
+            }
+        }
+
         function toggleTheme() {
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.theme = isDark ? 'dark' : 'light';
+            updateToggleAria(isDark);
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateToggleAria(document.documentElement.classList.contains('dark'));
+        });
     </script>
 </body>
 </html>
