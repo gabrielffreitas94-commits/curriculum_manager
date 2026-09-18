@@ -17,6 +17,9 @@ async def test_welcome_page_renders_successfully(async_client: AsyncClient):
     assert "/static/js/htmx.min.js" in content
     assert "/static/css/styles.css" in content
     assert "toggleTheme" in content
+    assert "lang-dropdown-btn" in content
+    assert "toggleLangDropdown" in content
+    assert "current-lang-label" in content
 
 
 @pytest.mark.asyncio
