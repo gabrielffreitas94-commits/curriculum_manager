@@ -20,3 +20,14 @@ async def welcome_page(request: Request) -> HTMLResponse:
         name="index.html.jinja2",
         context={"request": request},
     )
+
+
+@router.get("/auth/modal", response_class=HTMLResponse, status_code=status.HTTP_200_OK)
+async def login_modal(request: Request) -> HTMLResponse:
+    """Renderiza o fragmento do modal de login com Google, LinkedIn e E-mail/Senha."""
+    return templates.TemplateResponse(
+        request=request,
+        name="login_modal.html.jinja2",
+        context={"request": request},
+    )
+
