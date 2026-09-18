@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full bg-slate-50 text-slate-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ThothCVs AI — Gestão Inteligente de Currículos{% endblock %}</title>
+    <meta name="description" content="Plataforma de gestão inteligente de currículos e ATS pessoal com Google Gemini, FastAPI e HTMX.">
+    
+    <!-- Tailwind CSS (CDN para estilização rápida e moderna) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                            800: '#115e59',
+                            900: '#134e4a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- HTMX (Servido localmente do backend) -->
+    <script src="/static/js/htmx.min.js"></script>
+
+    <style>
+        .htmx-indicator {
+            display: none;
+        }
+        .htmx-request .htmx-indicator,
+        .htmx-request.htmx-indicator {
+            display: inline-flex;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="flex flex-col min-h-full font-sans antialiased">
+    <!-- Cabeçalho Principal -->
+    <header class="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logotipo & Branding -->
+                <div class="flex items-center space-x-3">
+                    <a href="/" class="flex items-center space-x-2 text-brand-700 hover:text-brand-800 transition">
+                        <span class="text-2xl">📜</span>
+                        <span class="text-xl font-bold tracking-tight">ThothCVs AI</span>
+                    </a>
+                    <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-800 border border-teal-200">
+                        FastAPI + HTMX
+                    </span>
+                </div>
+
+                <!-- Navegação -->
+                <nav class="flex items-center space-x-4 sm:space-x-6 text-sm font-medium">
+                    <a href="/" class="text-slate-700 hover:text-brand-600 transition">Início</a>
+                    <a href="/api/v1/docs" target="_blank" class="text-slate-700 hover:text-brand-600 transition flex items-center space-x-1">
+                        <span>Swagger API</span>
+                        <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                        </svg>
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Conteúdo Principal Dinâmico -->
+    <main class="flex-grow">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Rodapé -->
+    <footer class="bg-white border-t border-slate-200 py-6 mt-12 text-center text-sm text-slate-500">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-2">
+            <p>© 2026 ThothCVs AI — Gestão de Currículos & ATS com IA e Veracidade Absoluta.</p>
+            <p class="text-xs text-slate-400">Arquitetura Hexagonal • Python 3.12+ • HTMX 2.0</p>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,87 @@
+{% extends "base.html.jinja2" %}
+
+{% block title %}Bem-vindo ao ThothCVs AI — Gestão Inteligente com HTMX{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Hero Section -->
+    <div class="text-center max-w-3xl mx-auto">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-brand-50 border border-brand-200 text-brand-700 text-xs font-semibold mb-6">
+            <span>✨ Nova Arquitetura Unificada</span>
+            <span class="text-brand-400">•</span>
+            <span>FastAPI + HTMX + Tailwind CSS</span>
+        </div>
+        <h1 class="text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
+            Bem-vindo ao <span class="text-brand-700">ThothCVs AI</span>
+        </h1>
+        <p class="mt-4 text-lg text-slate-600 leading-relaxed">
+            Plataforma de alta precisão para adaptação cirúrgica de currículos com o <strong>Google Gemini</strong> e acompanhamento completo de candidaturas (ATS Pessoal), com foco intransigente em <strong>veracidade absoluta</strong>.
+        </p>
+
+        <!-- Ação Interativa HTMX -->
+        <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button 
+                hx-get="/htmx/ping" 
+                hx-target="#htmx-demo-area" 
+                hx-swap="innerHTML"
+                hx-indicator="#loading-spinner"
+                class="inline-flex items-center justify-center px-6 py-3 rounded-lg font-medium text-white bg-brand-600 hover:bg-brand-700 active:bg-brand-800 transition shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2">
+                <span>Testar Reatividade HTMX</span>
+                <svg id="loading-spinner" class="htmx-indicator ml-2 w-4 h-4 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </button>
+            <a 
+                href="/api/v1/docs" 
+                target="_blank" 
+                class="inline-flex items-center justify-center px-6 py-3 rounded-lg font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition shadow-sm">
+                Explorar API Swagger
+            </a>
+        </div>
+
+        <!-- Área Alvo do Swap HTMX -->
+        <div id="htmx-demo-area" class="mt-6 text-left max-w-xl mx-auto">
+            <div class="p-4 bg-white rounded-lg border border-dashed border-slate-300 text-center text-sm text-slate-500">
+                👆 Clique no botão acima para testar uma requisição assíncrona com HTMX sem recarregar a página.
+            </div>
+        </div>
+    </div>
+
+    <!-- Cards de Recursos e Princípios Arquiteturais -->
+    <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- Card 1 -->
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition">
+            <div class="w-12 h-12 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center text-2xl mb-4">
+                🎯
+            </div>
+            <h3 class="text-lg font-bold text-slate-900">Adaptação Cirúrgica</h3>
+            <p class="mt-2 text-sm text-slate-600 leading-relaxed">
+                Reorganização semântica e contextual do seu perfil profissional para corresponder com máxima fidelidade às exigências da vaga, sem forjar credenciais.
+            </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition">
+            <div class="w-12 h-12 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center text-2xl mb-4">
+                📊
+            </div>
+            <h3 class="text-lg font-bold text-slate-900">ATS Pessoal & Funil</h3>
+            <p class="mt-2 text-sm text-slate-600 leading-relaxed">
+                Gerencie todo o ciclo de vida das candidaturas, histórico de versões de currículos enviados por vaga e lembretes inteligentes de follow-up proativo.
+            </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition">
+            <div class="w-12 h-12 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center text-2xl mb-4">
+                🔐
+            </div>
+            <h3 class="text-lg font-bold text-slate-900">BYOK Seguro (ADR 0001)</h3>
+            <p class="mt-2 text-sm text-slate-600 leading-relaxed">
+                Cofre de chaves de IA com divisão de segredos (Split-Secret) em AES-256-GCM. Chaves nunca são salvas em texto puro no banco e são revogáveis por aparelho.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
