@@ -1,44 +1,12 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ThothCVs AI</title>
-    
-    <!-- Script Anti-FOUC (Prevenção de Flash de Tema) -->
-    <script>
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    </script>
+{% extends "base.html.jinja2" %}
 
-    <!-- Tailwind CSS Compilado -->
-    <link rel="stylesheet" href="/static/css/styles.css?v=2">
-    
-    <!-- HTMX -->
-    <script src="/static/js/htmx.min.js"></script>
-</head>
-<body class="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 flex flex-col items-center justify-center p-6">
-    <main class="text-center space-y-6 max-w-md">
-        <h1 class="text-4xl font-bold tracking-tight">Bem-vindo</h1>
-        
-        <div>
-            <button 
-                type="button" 
-                onclick="toggleTheme()" 
-                class="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 shadow-sm cursor-pointer">
-                Alternar Tema (Light / Dark)
-            </button>
-        </div>
-    </main>
+{% block title %}Início — ThothCVs AI{% endblock %}
 
-    <script>
-        function toggleTheme() {
-            const isDark = document.documentElement.classList.toggle('dark');
-            localStorage.theme = isDark ? 'dark' : 'light';
-        }
-    </script>
-</body>
-</html>
+{% block content %}
+<div class="text-center space-y-4 max-w-md">
+    <h1 class="text-4xl font-bold tracking-tight">Bem-vindo</h1>
+    <p class="text-sm text-slate-600 dark:text-slate-400">
+        Sistema de Gestão Inteligente de Currículos e ATS Pessoal com IA.
+    </p>
+</div>
+{% endblock %}
