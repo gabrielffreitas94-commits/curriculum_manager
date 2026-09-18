@@ -1,0 +1,30 @@
+<div id="header-auth" class="flex items-center">
+    {% if current_user %}
+        <div class="flex items-center space-x-2">
+            <div class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-xs text-slate-800 dark:text-slate-100 uppercase select-none">
+                {{ (current_user.full_name[:1] if current_user.full_name else current_user.email[:1]) | upper }}
+            </div>
+            <span class="text-xs font-semibold hidden md:inline text-slate-700 dark:text-slate-200 max-w-[130px] truncate select-none">
+                {{ current_user.full_name or current_user.email }}
+            </span>
+            <button 
+                type="button" 
+                id="logout-btn"
+                hx-post="/auth/logout" 
+                class="flex items-center justify-center h-8 px-2.5 rounded-full border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                Sair
+            </button>
+        </div>
+    {% else %}
+        <button 
+            type="button" 
+            id="login-btn"
+            hx-get="/auth/modal" 
+            hx-target="#modal-container" 
+            hx-swap="innerHTML"
+            aria-label="Abrir modal de login"
+            class="flex items-center justify-center h-8 px-3.5 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer">
+            Entrar
+        </button>
+    {% endif %}
+</div>

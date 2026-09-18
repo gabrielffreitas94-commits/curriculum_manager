@@ -143,17 +143,8 @@
                     </span>
                 </button>
 
-                <!-- Botão Entrar / Login Modal Trigger -->
-                <button 
-                    type="button" 
-                    id="login-btn"
-                    hx-get="/auth/modal" 
-                    hx-target="#modal-container" 
-                    hx-swap="innerHTML"
-                    aria-label="Abrir modal de login"
-                    class="flex items-center justify-center h-8 px-3.5 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer">
-                    Entrar
-                </button>
+                <!-- Autenticação / Usuário no Header -->
+                {% include "components/header_auth.html.jinja2" %}
             </div>
         </div>
     </header>
