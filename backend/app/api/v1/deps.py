@@ -20,6 +20,7 @@ from app.ports.auth_port import AuthError, AuthUser, InvalidTokenError
 from app.ports.oauth_port import OAuthPort
 
 if TYPE_CHECKING:
+    from app.services.auth_service import AuthService
     from app.services.document_service import DocumentService
     from app.services.user_service import UserService
 
@@ -126,3 +127,19 @@ async def get_user_service(
     from app.services.user_service import UserService
 
     return UserService(db=db, auth_port=auth_adapter)
+
+
+async def get_auth_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> "AuthService":
+    """Injeta uma instância ativa de AuthService com a sessão de banco do request.
+
+    Args:
+        db: Sessão de banco de dados ativa.
+
+    Returns:
+        AuthService pronto para uso.
+    """
+    from app.services.auth_service import AuthService
+
+    return AuthService(db=db, auth_port=auth_adapter)

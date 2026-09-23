@@ -10,8 +10,6 @@ from typing import Self
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-INSECURE_DEFAULT_ENCRYPTION_KEY: str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
-
 
 class Settings(BaseSettings):
     """Configurações gerais da aplicação validadas em tempo de inicialização.
@@ -24,7 +22,7 @@ class Settings(BaseSettings):
         DEBUG: Flag de depuração ativando logs verbosos.
         BACKEND_CORS_ORIGINS: Lista de origens permitidas para requisições CORS.
         DATABASE_URL: String de conexão assíncrona com o PostgreSQL.
-        MASTER_ENCRYPTION_KEY: Chave de 32 bytes em base64 para cifragem AES-GCM-256.
+        MASTER_ENCRYPTION_KEY: Chave de 32 bytes em base64 para cifragem AES-GCM-256 (obrigatória).
         STORAGE_PROVIDER: Provedor de storage ativo ('supabase' ou 'gcs').
     """
 
@@ -39,14 +37,14 @@ class Settings(BaseSettings):
     )
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./thothcvs_dev.db"
-    MASTER_ENCRYPTION_KEY: str = INSECURE_DEFAULT_ENCRYPTION_KEY
+    MASTER_ENCRYPTION_KEY: str
     STORAGE_PROVIDER: str = "supabase"
 
     # Configurações de Autenticação OAuth 2.0 e Sessão Web
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/callback/google"
-    SECRET_KEY: str = "thothscv-dev-session-secret-key-change-in-production"
+    SECRET_KEY: str
 
     # Configurações de Rate Limiting (SlowAPI) contra DoS e esgotamento de quota de IA
     RATE_LIMIT_ENABLED: bool = True
@@ -73,11 +71,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_master_encryption_key(self) -> Self:
-        """Garante a integridade e segurança da MASTER_ENCRYPTION_KEY.
+        """Garante a integridade e segurança da MASTER_ENCRYPTION_KEY em todos os ambientes.
 
         Valida que a chave é uma string Base64 decodificável em exatamente 32 bytes (256 bits).
-        Em ambientes 'production' ou 'staging', impede terminantemente o uso da chave padrão
-        hardcoded de desenvolvimento para evitar falhas criptográficas graves.
         """
         try:
             raw_key = base64.b64decode(self.MASTER_ENCRYPTION_KEY, validate=True)
@@ -88,17 +84,15 @@ class Settings(BaseSettings):
                 f"MASTER_ENCRYPTION_KEY inválida: deve ser Base64 de 32 bytes. Erro: {exc}"
             ) from exc
 
-        if (
-            self.ENVIRONMENT in ("production", "staging")
-            and self.MASTER_ENCRYPTION_KEY == INSECURE_DEFAULT_ENCRYPTION_KEY
-        ):
-            raise ValueError(
-                "CONFIGURAÇÃO INSEGURA: O uso da MASTER_ENCRYPTION_KEY padrão de "
-                "desenvolvimento é proibido em ambientes de produção e staging. "
-                "Gere uma chave criptográfica forte de 32 bytes (AES-GCM-256) "
-                "via Secret Manager."
-            )
+        return self
 
+    @model_validator(mode="after")
+    def validate_secret_key(self) -> Self:
+        """Garante entropia e tamanho mínimo para a SECRET_KEY de sessão em todos os ambientes."""
+        if not self.SECRET_KEY or len(self.SECRET_KEY.strip()) < 32:
+            raise ValueError(
+                "A SECRET_KEY deve ser uma string com entropia de no mínimo 32 caracteres."
+            )
         return self
 
 

@@ -4,18 +4,20 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import Request
+from fastapi import Request, Response
 from httpx import AsyncClient
 
 from app.api.web import (
-    create_session_jwt,
+    _set_session_cookie,
     get_authenticated_web_user,
     google_callback,
     login_google,
     login_linkedin,
 )
+from app.core.config import settings
 from app.domain.models import User
 from app.ports.oauth_port import OAuthError, OAuthUserInfo
+from app.services.auth_service import AuthService
 
 
 @pytest.mark.asyncio
@@ -142,71 +144,66 @@ async def test_welcome_page_with_invalid_or_empty_cookies(async_client: AsyncCli
 
 @pytest.mark.asyncio
 async def test_get_authenticated_web_user_direct():
-    """Valida resolução direta de usuário autenticado na Web UI com mock de sessão DB."""
+    """Valida resolução direta de usuário autenticado na Web UI via AuthService."""
     # 1. Sem cookie / vazio
     req_no_cookie = MagicMock(spec=Request)
     req_no_cookie.cookies = {}
-    db_mock = MagicMock()
-    user_none = await get_authenticated_web_user(req_no_cookie, db_mock)
+    auth_service_mock = MagicMock(spec=AuthService)
+    auth_service_mock.get_authenticated_user = AsyncMock(return_value=None)
+    user_none = await get_authenticated_web_user(req_no_cookie, auth_service_mock)
     assert user_none is None
+    auth_service_mock.get_authenticated_user.assert_awaited_once_with(None)
 
-    # 2. Com token válido e usuário encontrado no banco
+    # 2. Com token válido e usuário encontrado
     req_with_cookie = MagicMock(spec=Request)
     req_with_cookie.cookies = {"session_token": "mock_direct_test_user"}
     user_mock = User(
         id=uuid.uuid4(), firebase_uid="mock_uid_mock_direct_test_user", email="direct@test.com"
     )
-    mock_res = MagicMock()
-    mock_res.scalar_one_or_none.return_value = user_mock
-    db_mock.execute = AsyncMock(return_value=mock_res)
+    auth_service_mock.get_authenticated_user = AsyncMock(return_value=user_mock)
 
-    user_found = await get_authenticated_web_user(req_with_cookie, db_mock)
+    user_found = await get_authenticated_web_user(req_with_cookie, auth_service_mock)
     assert user_found == user_mock
     assert user_found.email == "direct@test.com"
+    auth_service_mock.get_authenticated_user.assert_awaited_with("mock_direct_test_user")
 
 
 @pytest.mark.asyncio
 async def test_social_login_direct():
-    """Valida execução direta dos handlers de login social com Google e LinkedIn."""
-    # 1. Google - novo usuário
-    db_mock = MagicMock()
-    mock_res = MagicMock()
-    mock_res.scalar_one_or_none.return_value = None
-    db_mock.execute = AsyncMock(return_value=mock_res)
-    db_mock.flush = AsyncMock()
-    db_mock.commit = AsyncMock()
+    """Valida execução direta dos handlers de login social delegando para AuthService."""
+    auth_service_mock = MagicMock(spec=AuthService)
 
-    resp_google_new = await login_google(request=MagicMock(spec=Request), db=db_mock)
-    assert resp_google_new.status_code == 200
-    assert resp_google_new.headers.get("HX-Refresh") == "true"
-    assert "session_token" in resp_google_new.headers.get("set-cookie", "")
-
-    # 2. Google - usuário já existente
-    user_existing = User(
+    # 1. Google
+    user_google = User(
         id=uuid.uuid4(),
         firebase_uid="mock_uid_mock_google_user",
         email="usuario.google@exemplo.com",
     )
-    mock_res.scalar_one_or_none.return_value = user_existing
-    resp_google_exist = await login_google(request=MagicMock(spec=Request), db=db_mock)
-    assert resp_google_exist.status_code == 200
+    auth_service_mock.authenticate_mock_user = AsyncMock(
+        return_value=(user_google, "jwt_mock_google")
+    )
+    resp_google = await login_google(
+        request=MagicMock(spec=Request), auth_service=auth_service_mock
+    )
+    assert resp_google.status_code == 200
+    assert resp_google.headers.get("HX-Refresh") == "true"
+    assert "session_token" in resp_google.headers.get("set-cookie", "")
 
-    # 3. LinkedIn - novo usuário
-    mock_res.scalar_one_or_none.return_value = None
-    resp_linkedin_new = await login_linkedin(request=MagicMock(spec=Request), db=db_mock)
-    assert resp_linkedin_new.status_code == 200
-    assert resp_linkedin_new.headers.get("HX-Refresh") == "true"
-    assert "session_token" in resp_linkedin_new.headers.get("set-cookie", "")
-
-    # 4. LinkedIn - usuário já existente
-    user_li_existing = User(
+    # 2. LinkedIn
+    user_li = User(
         id=uuid.uuid4(),
         firebase_uid="mock_uid_mock_linkedin_user",
         email="usuario.linkedin@exemplo.com",
     )
-    mock_res.scalar_one_or_none.return_value = user_li_existing
-    resp_linkedin_exist = await login_linkedin(request=MagicMock(spec=Request), db=db_mock)
-    assert resp_linkedin_exist.status_code == 200
+    auth_service_mock.authenticate_mock_user = AsyncMock(
+        return_value=(user_li, "jwt_mock_linkedin")
+    )
+    resp_linkedin = await login_linkedin(
+        request=MagicMock(spec=Request), auth_service=auth_service_mock
+    )
+    assert resp_linkedin.status_code == 200
+    assert resp_linkedin.headers.get("HX-Refresh") == "true"
+    assert "session_token" in resp_linkedin.headers.get("set-cookie", "")
 
 
 @pytest.mark.asyncio
@@ -251,7 +248,7 @@ async def test_google_callback_oauth_failure_and_invalid_token(async_client: Asy
             "/auth/callback/google?code=code_without_token", follow_redirects=False
         )
         assert res.status_code == 302
-        assert res.headers["location"] == "/?auth_error=invalid_token"
+        assert res.headers["location"] == "/?auth_error=oauth_failed"
 
 
 @pytest.mark.asyncio
@@ -304,85 +301,60 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
         assert res_callback2.headers["location"] == "/"
 
 
-@pytest.mark.asyncio
-async def test_get_authenticated_web_user_jwt_branches():
-    """Valida branches de validação de token JWT de sessão em get_authenticated_web_user."""
-    # 1. JWT válido com usuário no banco
-    valid_jwt = create_session_jwt(uid="google_test_sub", email="test@gmail.com")
-    req = MagicMock(spec=Request)
-    req.cookies = {"session_token": valid_jwt}
+def test_set_session_cookie_environment_behavior(monkeypatch):
+    """Valida a emissão segura de cookies dependente do ambiente (Secure flag em prod/staging)."""
+    # 1. Em desenvolvimento/local: secure deve ser False para funcionar em http://localhost
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    res_dev = Response()
+    _set_session_cookie(res_dev, session_token="token_dev")
+    cookie_header_dev = res_dev.headers.get("set-cookie", "")
+    assert "session_token=token_dev" in cookie_header_dev
+    assert "HttpOnly" in cookie_header_dev
+    assert "SameSite=lax" in cookie_header_dev
+    assert "secure" not in cookie_header_dev.lower()
 
-    db_mock = MagicMock()
-    mock_res = MagicMock()
-    user_mock = User(id=uuid.uuid4(), firebase_uid="google_test_sub", email="test@gmail.com")
-    mock_res.scalar_one_or_none.return_value = user_mock
-    db_mock.execute = AsyncMock(return_value=mock_res)
+    # 2. Em produção: secure deve ser True
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    res_prod = Response()
+    _set_session_cookie(res_prod, session_token="token_prod")
+    cookie_header_prod = res_prod.headers.get("set-cookie", "")
+    assert "session_token=token_prod" in cookie_header_prod
+    assert "HttpOnly" in cookie_header_prod
+    assert "Secure" in cookie_header_prod
 
-    found = await get_authenticated_web_user(req, db_mock)
-    assert found == user_mock
-
-    # 2. JWT válido mas usuário não existe no banco
-    mock_res.scalar_one_or_none.return_value = None
-    not_found = await get_authenticated_web_user(req, db_mock)
-    assert not_found is None
+    # 3. Em staging: secure deve ser True
+    monkeypatch.setattr(settings, "ENVIRONMENT", "staging")
+    res_staging = Response()
+    _set_session_cookie(res_staging, session_token="token_staging")
+    cookie_header_staging = res_staging.headers.get("set-cookie", "")
+    assert "Secure" in cookie_header_staging
 
 
 @pytest.mark.asyncio
 async def test_google_callback_direct():
-    """Valida execução direta do handler google_callback para novos e existentes usuários."""
-    # 1. Novo usuário (criação de User e UserSettings)
-    db_mock_new = MagicMock()
-    mock_res_new = MagicMock()
-    mock_res_new.scalar_one_or_none.return_value = None
-    db_mock_new.execute = AsyncMock(return_value=mock_res_new)
-    db_mock_new.flush = AsyncMock()
-    db_mock_new.commit = AsyncMock()
-
-    user_info_new = OAuthUserInfo(sub="new_123", email="novo@gmail.com", full_name="Novo Usuário")
-
-    with (
-        patch("app.api.web.google_oauth_adapter.exchange_code", new_callable=AsyncMock) as mock_ex,
-        patch(
-            "app.api.web.google_oauth_adapter.fetch_user_info", new_callable=AsyncMock
-        ) as mock_info,
-    ):
-        mock_ex.return_value = {"access_token": "token_ok"}
-        mock_info.return_value = user_info_new
-
-        resp_new = await google_callback(
-            request=MagicMock(spec=Request),
-            code="test_code_new",
-            db=db_mock_new,
-        )
-        assert resp_new.status_code == 302
-        assert "session_token" in resp_new.headers.get("set-cookie", "")
-
-    # 2. Usuário existente (atualização de perfil)
-    db_mock = MagicMock()
-    mock_res = MagicMock()
-    user_existing = User(
-        id=uuid.uuid4(), firebase_uid="google_999", email="existing@gmail.com", full_name=""
+    """Valida execução direta do handler google_callback delegando para AuthService."""
+    auth_service_mock = MagicMock(spec=AuthService)
+    user_mock = User(id=uuid.uuid4(), email="test@google.com")
+    auth_service_mock.authenticate_oauth_user = AsyncMock(
+        return_value=(user_mock, "jwt_token_google")
     )
-    mock_res.scalar_one_or_none.return_value = user_existing
-    db_mock.execute = AsyncMock(return_value=mock_res)
-    db_mock.commit = AsyncMock()
 
-    user_info = OAuthUserInfo(sub="999", email="existing@gmail.com", full_name="Nome Atualizado")
+    resp = await google_callback(
+        request=MagicMock(spec=Request),
+        code="valid_code",
+        auth_service=auth_service_mock,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/"
+    assert "session_token=jwt_token_google" in resp.headers.get("set-cookie", "")
+    auth_service_mock.authenticate_oauth_user.assert_awaited_once()
 
-    with (
-        patch("app.api.web.google_oauth_adapter.exchange_code", new_callable=AsyncMock) as mock_ex,
-        patch(
-            "app.api.web.google_oauth_adapter.fetch_user_info", new_callable=AsyncMock
-        ) as mock_info,
-    ):
-        mock_ex.return_value = {"access_token": "token_ok"}
-        mock_info.return_value = user_info
-
-        resp = await google_callback(
-            request=MagicMock(spec=Request),
-            code="test_code",
-            db=db_mock,
-        )
-        assert resp.status_code == 302
-        assert "session_token" in resp.headers.get("set-cookie", "")
-        assert user_existing.full_name == "Nome Atualizado"
+    # Cenário de OAuthError levantado pelo AuthService
+    auth_service_mock.authenticate_oauth_user = AsyncMock(side_effect=OAuthError("OAuth failed"))
+    resp_err = await google_callback(
+        request=MagicMock(spec=Request),
+        code="bad_code",
+        auth_service=auth_service_mock,
+    )
+    assert resp_err.status_code == 302
+    assert resp_err.headers["location"] == "/?auth_error=oauth_failed"

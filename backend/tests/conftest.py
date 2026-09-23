@@ -4,12 +4,17 @@ Configura o cliente HTTP assíncrono para testes contra a aplicação FastAPI
 e gerencia o ciclo de vida de testes isolados com banco de dados em memória SQLite StaticPool.
 """
 
+import os
 from collections.abc import AsyncGenerator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
+
+# Injeta variáveis de ambiente obrigatórias para inicialização da suíte de testes
+os.environ.setdefault("MASTER_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+os.environ.setdefault("SECRET_KEY", "thothscv-dev-session-secret-key-change-in-production")
 
 import app.domain.models  # noqa: F401
 import app.ports.document_port  # noqa: F401
