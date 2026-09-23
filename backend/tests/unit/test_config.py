@@ -218,3 +218,12 @@ def test_settings_rate_limit_properties() -> None:
     assert settings.RATE_LIMIT_ANALYZE_JOB == "10/minute"
     assert settings.RATE_LIMIT_MATCH_PREVIEW == "10/minute"
     assert settings.RATE_LIMIT_GENERATE == "5/minute"
+
+
+def test_settings_oauth_properties() -> None:
+    """Verifica se os atributos de Google OAuth e Session Key estão configurados."""
+    assert hasattr(settings, "GOOGLE_CLIENT_ID")
+    assert hasattr(settings, "GOOGLE_CLIENT_SECRET")
+    assert "http://localhost:8000/auth/callback/google" in settings.GOOGLE_REDIRECT_URI
+    assert isinstance(settings.SECRET_KEY, str)
+    assert len(settings.SECRET_KEY) > 0

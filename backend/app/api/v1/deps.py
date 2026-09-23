@@ -13,16 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.adapters.firebase_auth_adapter import FirebaseAuthAdapter
+from app.adapters.google_oauth_adapter import GoogleOAuthAdapter
 from app.core.database import get_db_session
 from app.domain.models import User
 from app.ports.auth_port import AuthError, AuthUser, InvalidTokenError
+from app.ports.oauth_port import OAuthPort
 
 if TYPE_CHECKING:
     from app.services.document_service import DocumentService
     from app.services.user_service import UserService
 
-# Instância do adaptador de autenticação
+# Instâncias dos adaptadores de autenticação
 auth_adapter = FirebaseAuthAdapter()
+google_oauth_adapter: OAuthPort = GoogleOAuthAdapter()
 
 # Esquema de extração do Bearer Token
 security = HTTPBearer(auto_error=True)

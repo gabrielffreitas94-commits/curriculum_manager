@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     MASTER_ENCRYPTION_KEY: str = INSECURE_DEFAULT_ENCRYPTION_KEY
     STORAGE_PROVIDER: str = "supabase"
 
+    # Configurações de Autenticação OAuth 2.0 e Sessão Web
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/callback/google"
+    SECRET_KEY: str = "thothscv-dev-session-secret-key-change-in-production"
+
     # Configurações de Rate Limiting (SlowAPI) contra DoS e esgotamento de quota de IA
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_ANALYZE_JOB: str = "10/minute"

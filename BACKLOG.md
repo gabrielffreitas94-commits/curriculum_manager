@@ -9,21 +9,21 @@ Este documento centraliza as tarefas planejadas para o módulo de **Autenticaç�
 Substituir os mocks locais de desenvolvimento pelas integrações oficiais completas com Google e LinkedIn.
 
 ### 1.1 Conexão Real com Google OAuth 2.0
-- [ ] **Configuração no Google Cloud Console:**
-  - [ ] Criar/vincular projeto no Google Cloud Console.
-  - [ ] Configurar Tela de Consentimento OAuth (nome da aplicação, logo e e-mail de contato).
-  - [ ] Gerar credenciais: `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
-  - [ ] Cadastrar URI de redirecionamento autorizada: `http://localhost:8000/auth/callback/google`.
-- [ ] **Implementação no Backend:**
-  - [ ] Configurar carregamento das credenciais em `Settings` (`app/core/config.py`).
-  - [ ] Implementar rota de redirecionamento `GET /auth/login/google` para a tela de login do Google.
-  - [ ] Implementar rota de callback `GET /auth/callback/google`.
-  - [ ] Troca segura de `code` por tokens oficiais junto ao endpoint do Google (`https://oauth2.googleapis.com/token`).
-  - [ ] Extração de perfil real do usuário (`email`, `full_name`, `picture_url` e `sub`).
-  - [ ] Persistência no banco relacional e emissão de cookie seguro de sessão `session_token`.
-- [ ] **Garantia de Qualidade:**
-  - [ ] Testes automatizados de integração cobrindo fluxos felizes e exceções de autorização.
-  - [ ] 100% de cobertura de código mantida.
+- [x] **Configuração no Google Cloud Console:**
+  - [x] Criar/vincular projeto no Google Cloud Console.
+  - [x] Configurar Tela de Consentimento OAuth (nome da aplicação, logo e e-mail de contato).
+  - [x] Gerar credenciais: `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
+  - [x] Cadastrar URI de redirecionamento autorizada: `http://localhost:8000/auth/callback/google`.
+- [x] **Implementação no Backend:**
+  - [x] Configurar carregamento das credenciais em `Settings` (`app/core/config.py`).
+  - [x] Implementar rota de redirecionamento `GET /auth/login/google` para a tela de login do Google.
+  - [x] Implementar rota de callback `GET /auth/callback/google`.
+  - [x] Troca segura de `code` por tokens oficiais junto ao endpoint do Google (`https://oauth2.googleapis.com/token`).
+  - [x] Extração de perfil real do usuário (`email`, `full_name`, `picture_url` e `sub`).
+  - [x] Persistência no banco relacional e emissão de cookie seguro de sessão `session_token`.
+- [x] **Garantia de Qualidade:**
+  - [x] Testes automatizados de integração cobrindo fluxos felizes e exceções de autorização.
+  - [x] 100% de cobertura de código mantida.
 
 ---
 
