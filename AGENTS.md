@@ -51,3 +51,18 @@ Se durante qualquer tarefa (refatoração, correção de bug, otimização ou ex
 3. **PEÇA AUTORIZAÇÃO EXPLÍCITA:** Pergunte diretamente ao usuário: *"Você autoriza a alteração deste teste de segurança protegido por guardrail?"*.
 4. **AGUARDE A RESPOSTA:** Somente prossiga se o usuário responder expressamente autorizando a alteração. Caso contrário, mantenha o teste estritamente intacto e busque outra solução na implementação.
 
+---
+
+## 🛡️ Regra Inviolável de Criação Obrigatória de Guardrails para Testes de Segurança
+
+**ATENÇÃO AGENTES DE IA E MODELOS LLM:**
+É **TERMINANTEMENTE OBRIGATÓRIO** que **TODO e QUALQUER** teste novo ou refatorado que valide mecanismos de segurança, mitigações de vulnerabilidades (OWASP / CWE / STRIDE), autenticação, autorização, tokens anti-CSRF, sanitização de inputs, validação de e-mails/provedores ou criptografia **seja criado desde a sua primeira versão como um Guardrail Anti-Regressão**.
+
+### Protocolo de Criação Obrigatório:
+1. **Docstring Dual-Target Padronizada:** A função de teste deve conter obrigatoriamente as 4 seções em sua docstring:
+   - `VETOR DE AMEAÇA:` Identificação exata da vulnerabilidade (CWE / OWASP / STRIDE) e seu impacto.
+   - `COMPORTAMENTO ESPERADO (FAIL-CLOSED):` O que o sistema deve fazer e o que nunca deve permitir.
+   - `RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):` O que uma IA ou humano poderia tentar simplificar no futuro que reabriria a falha.
+   - `PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):` A asserção imutável contra a qual o teste valida (sem tautologia).
+2. **Imunidade Imediata:** Assim que criado com essas marcações, o teste entra instantaneamente sob a proteção da Regra Inviolável de Proteção de Testes de Segurança (nenhuma IA futura poderá modificá-lo sem parar e pedir permissão explícita ao usuário).
+

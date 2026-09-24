@@ -101,6 +101,7 @@ async def test_google_oauth_adapter_fetch_user_info_success() -> None:
     mock_resp.json.return_value = {
         "sub": "google_sub_999",
         "email": "teste@gmail.com",
+        "email_verified": True,
         "name": "Nome Usuário",
         "picture": "https://avatar.google.com/pic.jpg",
     }
@@ -123,6 +124,7 @@ async def test_google_oauth_adapter_fetch_user_info_fallback_name() -> None:
     mock_resp.json.return_value = {
         "sub": "google_sub_888",
         "email": "noname@gmail.com",
+        "email_verified": "true",
     }
     mock_client.get.return_value = mock_resp
 
@@ -181,6 +183,7 @@ async def test_google_oauth_adapter_fetch_user_info_default_client() -> None:
     mock_resp.json.return_value = {
         "sub": "sub_def",
         "email": "def@gmail.com",
+        "email_verified": True,
         "name": "Default Client",
     }
 
@@ -189,3 +192,54 @@ async def test_google_oauth_adapter_fetch_user_info_default_client() -> None:
         info = await adapter.fetch_user_info("token_def")
         assert info.sub == "sub_def"
         assert info.email == "def@gmail.com"
+
+
+@pytest.mark.asyncio
+async def test_google_oauth_adapter_fetch_user_info_unverified_email_fails() -> None:
+    """Garante bloqueio estrito (fail-closed) de contas Google sem e-mail verificado.
+
+    VETOR DE AMEAÇA:
+    - CWE-287 (Improper Authentication) / OWASP API2:2023 (Broken Authentication).
+    - Pre-Account Takeover: Um invasor cria ou utiliza uma conta OAuth federada associada a um
+      endereço de e-mail corporativo ou pessoal de terceiros que ainda não foi validado pelo
+      provedor. Se o sistema confiar cegamente na claim de e-mail sem validar a confirmação
+      de posse, o invasor obterá acesso indevido à conta da vítima no ThothCVs.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O adaptador Google DEVE verificar explicitamente a claim 'email_verified' retornada pelo
+      OpenID.
+    - Se email_verified for False, ausente ou qualquer valor que não represente verificação
+      positiva, a consulta DEVE falhar sumariamente levantando OAuthError com mensagem explicativa.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Um desenvolvedor ou agente IA poderia simplificar o parsing do payload do Google apagando
+      a verificação de email_verified por julgar que o Google só retorna e-mails válidos.
+    - Essa simplificação abriria uma brecha sutil de sequestro de conta para contas Google
+      federadas.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Assere o levantamento estrito de OAuthError com match na mensagem de e-mail não verificado
+      quando email_verified=False e quando a chave está ausente no payload.
+    """
+    adapter = GoogleOAuthAdapter()
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_resp = AsyncMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+
+    # 1. Payload com email_verified=False
+    mock_resp.json.return_value = {
+        "sub": "google_sub_unverified",
+        "email": "unverified@gmail.com",
+        "email_verified": False,
+    }
+    mock_client.get.return_value = mock_resp
+    with pytest.raises(OAuthError, match="não está verificado"):
+        await adapter.fetch_user_info("token_unverified", client=mock_client)
+
+    # 2. Payload com email_verified ausente
+    mock_resp.json.return_value = {
+        "sub": "google_sub_unverified_2",
+        "email": "unverified2@gmail.com",
+    }
+    with pytest.raises(OAuthError, match="não está verificado"):
+        await adapter.fetch_user_info("token_unverified_2", client=mock_client)

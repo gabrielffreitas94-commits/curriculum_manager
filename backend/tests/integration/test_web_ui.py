@@ -152,7 +152,31 @@ async def test_google_callback_error_or_canceled(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_google_callback_csrf_state_validation(async_client: AsyncClient):
-    """Valida bloqueio contra ataques de Login CSRF com state ausente ou manipulado."""
+    """Garante bloqueio estrito contra ataques de OAuth Login CSRF validando o token state.
+
+    VETOR DE AMEAÇA:
+    - CWE-352 (Cross-Site Request Forgery - CSRF) / OWASP API2:2023 (Broken Authentication).
+    - OAuth Login CSRF: Um invasor inicia o fluxo OAuth com sua própria conta, intercepta o code
+      de autorização e induz a vítima a acessar o callback com o code do atacante. Sem validação
+      do parâmetro 'state', o navegador da vítima salvaria a sessão vinculada à conta do invasor,
+      permitindo exfiltração de dados confidenciais e currículos preenchidos pela vítima (LGPD).
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O callback DEVE exigir a presença simultânea do parâmetro 'state' na query string e do cookie
+      'oauth_state' gerado pelo próprio servidor.
+    - Se o state estiver ausente, ou se a comparação em tempo constante divergir, a autenticação
+      DEVE falhar sumariamente com redirecionamento de erro 'csrf_detected' e remoção do cookie.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Um desenvolvedor ou agente IA poderia considerar a verificação de 'state' redundante ou
+      opcional para 'simplificar' o login ou testes, removendo o cookie oauth_state.
+    - Essa alteração reabriria a vulnerabilidade crítica de Login CSRF em produção
+      sem erros de sintaxe.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Assere explicitamente a recusa e redirecionamento para '/?auth_error=csrf_detected' nos três
+      cenários de fraude: sem parâmetro, sem cookie e com valores manipulados/divergentes.
+    """
     # 1. Sem parâmetro state na query string
     async_client.cookies.set("oauth_state", "secret_state_123")
     res_no_state = await async_client.get(

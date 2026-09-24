@@ -134,6 +134,10 @@ class GoogleOAuthAdapter(OAuthPort):
             if not sub or not email:
                 raise OAuthError("Google UserInfo não retornou sub ou email válidos.")
 
+            is_verified = data.get("email_verified")
+            if is_verified is not True and str(is_verified).lower() != "true":
+                raise OAuthError("O e-mail retornado pela conta Google não está verificado.")
+
             return OAuthUserInfo(
                 sub=str(sub),
                 email=str(email),
