@@ -8,9 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.domain.models import User, UserSettings
 from app.ports.auth_port import AuthPort, AuthUser
 from app.ports.oauth_port import OAuthError, OAuthPort, OAuthUserInfo
+
+logger = get_logger("auth_service")
 
 
 class AuthService:
@@ -132,6 +135,7 @@ class AuthService:
         tokens = await oauth_port.exchange_code(code)
         access_token = tokens.get("access_token")
         if not access_token:
+            logger.error("oauth_access_token_missing_in_response")
             raise OAuthError("Token de acesso ausente na resposta do provedor OAuth.")
 
         user_info: OAuthUserInfo = await oauth_port.fetch_user_info(access_token)
@@ -163,12 +167,24 @@ class AuthService:
             )
             self._db.add(settings_entry)
             await self._db.commit()
+            logger.info(
+                "user_provisioned",
+                user_id=str(user.id),
+                action="signup",
+                auth_provider="google",
+            )
         else:
             if not user.firebase_uid:
                 user.firebase_uid = firebase_uid
             if user_info.full_name and not user.full_name:
                 user.full_name = user_info.full_name
             await self._db.commit()
+            logger.info(
+                "user_authenticated",
+                user_id=str(user.id),
+                action="login",
+                auth_provider="google",
+            )
 
         session_token = self.create_session_jwt(uid=user.firebase_uid, email=user.email)
         return user, session_token

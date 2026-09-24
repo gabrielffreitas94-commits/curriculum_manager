@@ -48,9 +48,14 @@ async def test_login_modal_renders_successfully(async_client: AsyncClient):
     content = response.text
 
     assert "Acessar Plataforma" in content
+    assert 'role="dialog"' in content
+    assert 'aria-modal="true"' in content
+    assert 'aria-labelledby="auth-modal-title"' in content
+    assert 'id="auth-modal-title"' in content
     assert "btn-login-google" in content
     assert "Continuar com o Google" in content
     assert "btn-login-linkedin" in content
+    assert 'aria-disabled="true"' in content
     assert "Continuar com o LinkedIn" in content
     assert "Em breve" in content
     assert "closeModal" in content

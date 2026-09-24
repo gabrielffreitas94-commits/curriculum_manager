@@ -66,3 +66,32 @@ Se durante qualquer tarefa (refatoração, correção de bug, otimização ou ex
    - `PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):` A asserção imutável contra a qual o teste valida (sem tautologia).
 2. **Imunidade Imediata:** Assim que criado com essas marcações, o teste entra instantaneamente sob a proteção da Regra Inviolável de Proteção de Testes de Segurança (nenhuma IA futura poderá modificá-lo sem parar e pedir permissão explícita ao usuário).
 
+---
+
+## 🔭 Regra Obrigatória de Observabilidade e Telemetria (Zero Pontos Cegos)
+
+**ATENÇÃO AGENTES DE IA E DESENVOLVEDORES:**
+É **TERMINANTEMENTE OBRIGATÓRIO** que **TODO e QUALQUER** código novo em `app/adapters/`, `app/services/` ou `app/api/` já nasça com instrumentação completa de observabilidade estruturada:
+
+1. **Instanciação de Logger Estruturado:** Todo adapter, service e router deve instanciar `logger = get_logger(...)` via `app.core.logging`.
+2. **Medição de Latência em I/O Externo:** Toda chamada de rede ou I/O-bound (APIs terceiras como Google OAuth/Gemini, Supabase, WeasyPrint) deve mensurar a latência com `time.perf_counter()` e emitir log estruturado com `duration_ms`.
+3. **Tratamento de Exceções com Contexto:** Todo bloco `try/except` deve registrar logs de falha com severidade adequada (`WARNING` para fallbacks recuperáveis; `ERROR` para quebras de fluxo), incluindo `error=str(exc)` e `exc_info=True`.
+4. **Propagação de Contexto de Usuário:** Sempre que um usuário for autenticado ou resolvido (ex: `deps.py`, `web.py`), deve-se invocar `set_user_id(str(user.id))` para correlação cruzada em logs e traces.
+5. **Scrubbing de PII e Segredos (AppSec/LGPD):** Nunca registrar em logs senhas, chaves de API, tokens JWT brutos ou e-mails de candidatos. Utilize sempre identificadores opacos (`user_id`, `sub`).
+
+---
+
+## 🧪 Regra Obrigatória de Engenharia de Qualidade e SDET (Definition of Done)
+
+**ATENÇÃO AGENTES DE IA E DESENVOLVEDORES:**
+É **TERMINANTEMENTE OBRIGATÓRIO** que **TODO e QUALQUER** código novo atenda aos seguintes critérios de QA antes de qualquer entrega ou Pull Request:
+
+1. **Quality Gate de 100% no CI/CD:** A suíte deve passar integralmente com 100% de cobertura (`--cov-fail-under=100`).
+2. **Cobertura Exhaustiva de Branches & BVA (Boundary Value Analysis):**
+   - Não teste apenas o caminho feliz. Teste valores limites, coleções vazias, strings com espaços, tokens expirados e falhas assíncronas de infraestrutura (timeout de rede, desconexão de banco).
+   - Teste de mutação mental: se um operador lógico for invertido (`>` por `>=`, `or` por `and`), os testes devem falhar.
+3. **Acessibilidade Semântica no Frontend (WCAG 2.1 AA):**
+   - Qualquer template HTML/Jinja2 ou componente deve conter atributos ARIA apropriados (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `aria-disabled="true"`).
+   - Elementos interativos devem suportar navegação por teclado (Escape, Tab, Enter) e foco acessível.
+
+

@@ -1,10 +1,12 @@
 """Testes unitários e de cobertura para o AuthService."""
 
+import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import jwt
 import pytest
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -190,3 +192,32 @@ async def test_auth_service_authenticate_oauth_user_existing_user_update() -> No
     mock_res.scalar_one_or_none.return_value = user_no_uid
     user2, _ = await service.authenticate_oauth_user(oauth_port_mock, code="code_ok_2")
     assert user2.firebase_uid == "google_sub_updated"
+
+
+@pytest.mark.asyncio
+async def test_auth_service_get_authenticated_user_expired_jwt() -> None:
+    """Garante que JWT de sessão expirado retorne None de forma resiliente."""
+    service = AuthService(db=MagicMock(spec=AsyncSession))
+    now = int(time.time())
+    expired_payload = {
+        "sub": "user_expired_123",
+        "email": "expired@teste.com",
+        "iat": now - 3600,
+        "exp": now - 10,
+        "iss": "thothcvs-web",
+    }
+    expired_token = jwt.encode(expired_payload, settings.SECRET_KEY, algorithm="HS256")
+    user = await service.get_authenticated_user(expired_token)
+    assert user is None
+
+
+@pytest.mark.asyncio
+async def test_auth_service_get_authenticated_user_database_error_fail_closed() -> None:
+    """Garante fail-closed retornando None se o banco de dados falhar na consulta."""
+    db_mock = MagicMock(spec=AsyncSession)
+    db_mock.execute = AsyncMock(side_effect=OperationalError("Connection lost", None, None))
+    service = AuthService(db=db_mock)
+    token = service.create_session_jwt(uid="sub_db_err", email="err@test.com")
+
+    user = await service.get_authenticated_user(token)
+    assert user is None
