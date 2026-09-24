@@ -6,9 +6,11 @@ e registra os roteadores da versão 1 da API.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -20,6 +22,7 @@ from app.api.v1.notifications import router as notifications_router
 from app.api.v1.profile import router as profile_router
 from app.api.v1.resumes import router as resumes_router
 from app.api.v1.users import router as users_router
+from app.api.web import router as web_router
 from app.core.config import settings
 from app.core.correlation_middleware import CorrelationMiddleware
 from app.core.logging import setup_logging
@@ -90,6 +93,14 @@ def create_application() -> FastAPI:
     application.state.limiter = limiter
     application.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
     application.add_middleware(SlowAPIMiddleware)
+
+    # Montagem de arquivos estáticos (HTMX, CSS, assets)
+    static_dir = Path(__file__).resolve().parent / "static"
+    if static_dir.exists():
+        application.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Registro de rotas web (Interface HTMX)
+    application.include_router(web_router)
 
     # Registro de rotas de diagnóstico globais (Cloud Run)
     application.include_router(health_router)

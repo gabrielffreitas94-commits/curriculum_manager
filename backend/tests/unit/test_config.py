@@ -4,102 +4,79 @@ import base64
 import os
 
 import pytest
+from pydantic import ValidationError
 
-from app.core.config import INSECURE_DEFAULT_ENCRYPTION_KEY, Settings, settings
+from app.core.config import Settings, settings
 
-
-def test_settings_allows_default_key_in_development_or_test() -> None:
-    """Garante que a chave padrão hardcoded é permitida apenas em development e test.
-
-    VETOR DE AMEAÇA:
-    - CWE-321: Use of Hard-coded Cryptographic Key.
-    - Usabilidade local: Desenvolvedores precisam conseguir rodar a aplicação localmente
-      e executar a suíte de testes unitários sem configurar segredos manuais complexos.
-
-    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
-    - Em 'development' e 'test', a chave default DEVE ser aceita sem levantar exceção.
-
-    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
-    - Uma alteração no validador que bloqueie 'development' quebraria os testes unitários
-      e o onboarding local de novos desenvolvedores.
-
-    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
-    - Instanciação explícita com ENVIRONMENT='development' e ENVIRONMENT='test'
-      deve resultar em instância válida com a chave padrão esperada.
-    """
-    dev_settings = Settings(
-        ENVIRONMENT="development",
-        MASTER_ENCRYPTION_KEY=INSECURE_DEFAULT_ENCRYPTION_KEY,
-        _env_file=None,
-    )
-    assert dev_settings.ENVIRONMENT == "development"
-    assert dev_settings.MASTER_ENCRYPTION_KEY == INSECURE_DEFAULT_ENCRYPTION_KEY
-
-    test_settings = Settings(
-        ENVIRONMENT="test",
-        MASTER_ENCRYPTION_KEY=INSECURE_DEFAULT_ENCRYPTION_KEY,
-        _env_file=None,
-    )
-    assert test_settings.ENVIRONMENT == "test"
-    assert test_settings.MASTER_ENCRYPTION_KEY == INSECURE_DEFAULT_ENCRYPTION_KEY
+VALID_TEST_SECRET_KEY = "test-secret-key-with-strong-entropy-32-chars!!"
 
 
-def test_settings_blocks_insecure_default_key_in_production() -> None:
-    """Garante que o uso da MASTER_ENCRYPTION_KEY padrão em produção seja impedido no boot.
+def test_settings_blocks_missing_encryption_key_in_any_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Garante que o boot falha imediatamente caso a MASTER_ENCRYPTION_KEY esteja ausente.
 
     VETOR DE AMEAÇA:
-    - OWASP A02:2021 (Cryptographic Failures) / CWE-321 (Use of Hard-coded Cryptographic Key).
-    - Impacto: Chaves de API e tokens cifrados com uma chave pública padrão de repositório
-      permitem que qualquer pessoa com acesso ao banco decifre todas as credenciais sensíveis.
+    - CWE-321: Use of Hard-coded Cryptographic Key / CWE-1188: Initialization with Insecure Default.
+    - Requisito Estrito: Variáveis de ambiente são obrigatórias em dev, test, staging e prod.
 
     COMPORTAMENTO ESPERADO (FAIL-CLOSED):
-    - O Settings DEVE abortar imediatamente o boot da aplicação com ValueError descritivo
-      ao detectar a chave padrão quando ENVIRONMENT='production'.
-
-    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
-    - Um desenvolvedor ou agente IA poderia remover esta verificação para facilitar testes
-      em contêineres de homologação ou por considerar o validador 'muito restritivo'.
-    - Isso causaria exposição crítica de todas as chaves de API cifradas em produção.
+    - A inicialização do Settings DEVE abortar com erro de validação do Pydantic
+      caso MASTER_ENCRYPTION_KEY não seja fornecida no ambiente.
 
     PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
-    - Verifica o lançamento estrito de ValueError com a mensagem contendo
-      'CONFIGURAÇÃO INSEGURA: O uso da MASTER_ENCRYPTION_KEY padrão de desenvolvimento é proibido'.
+    - Instanciação sem MASTER_ENCRYPTION_KEY levanta ValidationError em qualquer ENVIRONMENT.
     """
-    with pytest.raises(
-        ValueError, match="CONFIGURAÇÃO INSEGURA: O uso da MASTER_ENCRYPTION_KEY padrão"
-    ):
+    monkeypatch.delenv("MASTER_ENCRYPTION_KEY", raising=False)
+    with pytest.raises(ValidationError):
+        Settings(
+            ENVIRONMENT="development",
+            SECRET_KEY=VALID_TEST_SECRET_KEY,
+            _env_file=None,
+        )
+
+    with pytest.raises(ValidationError):
         Settings(
             ENVIRONMENT="production",
-            MASTER_ENCRYPTION_KEY=INSECURE_DEFAULT_ENCRYPTION_KEY,
+            SECRET_KEY=VALID_TEST_SECRET_KEY,
             _env_file=None,
         )
 
 
-def test_settings_blocks_insecure_default_key_in_staging() -> None:
-    """Garante que o uso da MASTER_ENCRYPTION_KEY padrão em staging seja impedido no boot.
+def test_settings_blocks_missing_secret_key_in_any_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Garante que o boot falha imediatamente caso a SECRET_KEY de sessão esteja ausente.
 
     VETOR DE AMEAÇA:
-    - OWASP A02:2021 (Cryptographic Failures) / CWE-321 (Use of Hard-coded Cryptographic Key).
-    - Impacto: Ambientes de staging frequentemente utilizam espelhos de bancos ou segredos
-      reais; usar a chave default deixaria dados expostos.
+    - CWE-321: Use of Hard-coded Cryptographic Key.
+    - Sessão Web Forjada: Sem SECRET_KEY estrita e obrigatória, tokens de sessão
+      não podem ser emitidos.
 
     COMPORTAMENTO ESPERADO (FAIL-CLOSED):
-    - O Settings DEVE abortar o boot com ValueError descritivo quando ENVIRONMENT='staging'.
-
-    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
-    - Relaxar o validador apenas para staging criaria uma disparidade de ambiente e
-      permitiria que falhas de configuração vazassem até a borda de produção.
+    - A inicialização do Settings DEVE abortar com ValidationError caso
+      SECRET_KEY não seja fornecida.
 
     PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
-    - Verifica o lançamento estrito de ValueError ao instanciar Settings com ENVIRONMENT='staging'
-      e a chave padrão.
+    - Instanciação sem SECRET_KEY levanta ValidationError em qualquer ENVIRONMENT.
     """
-    with pytest.raises(
-        ValueError, match="CONFIGURAÇÃO INSEGURA: O uso da MASTER_ENCRYPTION_KEY padrão"
-    ):
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    valid_key = base64.b64encode(os.urandom(32)).decode("utf-8")
+    with pytest.raises(ValidationError):
         Settings(
-            ENVIRONMENT="staging",
-            MASTER_ENCRYPTION_KEY=INSECURE_DEFAULT_ENCRYPTION_KEY,
+            ENVIRONMENT="development",
+            MASTER_ENCRYPTION_KEY=valid_key,
+            _env_file=None,
+        )
+
+
+def test_settings_blocks_short_secret_key() -> None:
+    """Garante que SECRET_KEY com menos de 32 caracteres seja rejeitada no boot."""
+    valid_key = base64.b64encode(os.urandom(32)).decode("utf-8")
+    with pytest.raises(ValueError, match="entropia de no mínimo 32 caracteres"):
+        Settings(
+            MASTER_ENCRYPTION_KEY=valid_key,
+            SECRET_KEY="short-secret-key",
             _env_file=None,
         )
 
@@ -128,6 +105,7 @@ def test_settings_accepts_strong_random_key_in_production_and_staging() -> None:
     prod_settings = Settings(
         ENVIRONMENT="production",
         MASTER_ENCRYPTION_KEY=valid_key_b64,
+        SECRET_KEY=VALID_TEST_SECRET_KEY,
         _env_file=None,
     )
     assert prod_settings.ENVIRONMENT == "production"
@@ -136,6 +114,7 @@ def test_settings_accepts_strong_random_key_in_production_and_staging() -> None:
     staging_settings = Settings(
         ENVIRONMENT="staging",
         MASTER_ENCRYPTION_KEY=valid_key_b64,
+        SECRET_KEY=VALID_TEST_SECRET_KEY,
         _env_file=None,
     )
     assert staging_settings.ENVIRONMENT == "staging"
@@ -166,6 +145,7 @@ def test_settings_blocks_invalid_base64_encryption_key() -> None:
     ):
         Settings(
             MASTER_ENCRYPTION_KEY=invalid_b64,
+            SECRET_KEY=VALID_TEST_SECRET_KEY,
             _env_file=None,
         )
 
@@ -192,6 +172,7 @@ def test_settings_blocks_short_or_long_encryption_key() -> None:
     with pytest.raises(ValueError, match="A MASTER_ENCRYPTION_KEY deve conter exatamente 32 bytes"):
         Settings(
             MASTER_ENCRYPTION_KEY=short_key,
+            SECRET_KEY=VALID_TEST_SECRET_KEY,
             _env_file=None,
         )
 
@@ -199,6 +180,7 @@ def test_settings_blocks_short_or_long_encryption_key() -> None:
     with pytest.raises(ValueError, match="A MASTER_ENCRYPTION_KEY deve conter exatamente 32 bytes"):
         Settings(
             MASTER_ENCRYPTION_KEY=long_key,
+            SECRET_KEY=VALID_TEST_SECRET_KEY,
             _env_file=None,
         )
 
@@ -218,3 +200,12 @@ def test_settings_rate_limit_properties() -> None:
     assert settings.RATE_LIMIT_ANALYZE_JOB == "10/minute"
     assert settings.RATE_LIMIT_MATCH_PREVIEW == "10/minute"
     assert settings.RATE_LIMIT_GENERATE == "5/minute"
+
+
+def test_settings_oauth_properties() -> None:
+    """Verifica se os atributos de Google OAuth e Session Key estão configurados."""
+    assert hasattr(settings, "GOOGLE_CLIENT_ID")
+    assert hasattr(settings, "GOOGLE_CLIENT_SECRET")
+    assert "http://localhost:8000/auth/callback/google" in settings.GOOGLE_REDIRECT_URI
+    assert isinstance(settings.SECRET_KEY, str)
+    assert len(settings.SECRET_KEY) > 0

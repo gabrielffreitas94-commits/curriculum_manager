@@ -1,0 +1,6 @@
+<!-- Modal de Autenticação (Fragmento HTMX injetado em #modal-container) -->
+<div id="auth-modal-backdrop" 
+     class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+     onclick="if (event.target === this) closeModal()">
+    {% include "auth/login_card.html.jinja2" %}
+</div>

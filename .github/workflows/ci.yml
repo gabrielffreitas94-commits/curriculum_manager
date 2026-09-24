@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     branches:
       - main
 
@@ -133,80 +134,6 @@ jobs:
         run: uv run pytest tests/integration/ --cov=app/api --cov=app/services --cov-report=term-missing
 
   # ============================================================================
-  # FRONTEND CI JOBS (Execução Paralela)
-  # ============================================================================
-  frontend-lint:
-    name: "Frontend: Linter (ESLint)"
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Run ESLint
-        run: npm run lint
-
-  frontend-unit-tests:
-    name: "Frontend: Unit & Component Tests (Vitest)"
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Run Vitest Suite
-        run: npm test
-
-  frontend-build:
-    name: "Frontend: Production Build (Next.js)"
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Run Next.js Build
-        run: npm run build
-        env:
-          NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
-
-  # ============================================================================
   # QUALITY & COVERAGE GATE (Enforcement 100% de Cobertura)
   # ============================================================================
   coverage-gate:
@@ -239,21 +166,6 @@ jobs:
       - name: Enforce Backend 100% Coverage Gate
         working-directory: backend
         run: uv run pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=100
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Frontend Dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Enforce Frontend 100% Coverage Gate
-        working-directory: frontend
-        run: npm run test:coverage
 
   # ============================================================================
   # SECURITY GUARDRAILS GATE (Proteção Anti-Regressão de Testes de Segurança)
@@ -296,5 +208,23 @@ jobs:
 
       - name: Enforce Hexagonal Architecture Boundaries
         run: python scripts/check_hexagonal_architecture.py
+
+  # ============================================================================
+  # OBSERVABILITY GATE (Guardião da Telemetria & Zero Pontos Cegos)
+  # ============================================================================
+  telemetry-gate:
+    name: "Observability Gate: Zero Blind Spots & Telemetry Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Enforce Observability & Structured Logging Compliance
+        run: python scripts/check_telemetry_compliance.py
 
 

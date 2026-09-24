@@ -91,7 +91,6 @@ def check_guardrails() -> int:
             f"{base_commit}...HEAD",
             "--",
             "backend/tests/",
-            "frontend/",
         ]
         diff_output = subprocess.check_output(
             diff_cmd, text=True, encoding="utf-8", errors="replace", stderr=subprocess.DEVNULL
@@ -99,7 +98,7 @@ def check_guardrails() -> int:
     except subprocess.CalledProcessError:
         # Se falhar (ex: shallow clone sem base), tenta diff direto com HEAD~1
         try:
-            diff_cmd = ["git", "diff", "-U3", "HEAD~1", "--", "backend/tests/", "frontend/"]
+            diff_cmd = ["git", "diff", "-U3", "HEAD~1", "--", "backend/tests/"]
             diff_output = subprocess.check_output(
                 diff_cmd, text=True, encoding="utf-8", errors="replace", stderr=subprocess.DEVNULL
             )

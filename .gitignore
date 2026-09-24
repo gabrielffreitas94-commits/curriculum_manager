@@ -60,6 +60,7 @@ serviceAccountKey.json
 .idea/
 *.swp
 *.swo
-*~
-.DS_Store
-Thumbs.db
+# Tools & Binaries
+tools/
+*.exe
+

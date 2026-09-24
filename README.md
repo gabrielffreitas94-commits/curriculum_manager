@@ -72,6 +72,26 @@ frontend/
 
 ---
 
+## ⚡ Execução Rápida (Comando Único)
+
+Para iniciar o sistema completo (compilação do Tailwind CSS, migrações do Alembic e inicialização do servidor FastAPI com auto-reload):
+
+```bash
+# No Windows PowerShell:
+.\start_thoth
+
+# No Windows CMD:
+start_thoth
+
+# Ou via Python multiplataforma:
+python start_thoth.py
+
+# No Linux / macOS / Git Bash:
+./start_thoth.sh
+```
+
+---
+
 ## 📋 Pré-requisitos & Instalação
 
 ### Backend (Python 3.13 + UV)
