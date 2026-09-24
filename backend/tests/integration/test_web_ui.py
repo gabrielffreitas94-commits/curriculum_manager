@@ -125,11 +125,13 @@ async def test_get_authenticated_web_user_direct():
 
 @pytest.mark.asyncio
 async def test_login_google_redirect(async_client: AsyncClient):
-    """Valida redirecionamento HTTP 302 para a tela oficial do Google OAuth."""
+    """Valida redirecionamento HTTP 302 para a tela oficial do Google OAuth com state anti-CSRF."""
     res = await async_client.get("/auth/login/google", follow_redirects=False)
     assert res.status_code == 302
     assert "https://accounts.google.com/o/oauth2/v2/auth" in res.headers["location"]
     assert "client_id=" in res.headers["location"]
+    assert "state=" in res.headers["location"]
+    assert "oauth_state" in res.cookies
 
 
 @pytest.mark.asyncio
@@ -149,20 +151,54 @@ async def test_google_callback_error_or_canceled(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_google_callback_csrf_state_validation(async_client: AsyncClient):
+    """Valida bloqueio contra ataques de Login CSRF com state ausente ou manipulado."""
+    # 1. Sem parâmetro state na query string
+    async_client.cookies.set("oauth_state", "secret_state_123")
+    res_no_state = await async_client.get(
+        "/auth/callback/google?code=valid_code", follow_redirects=False
+    )
+    assert res_no_state.status_code == 302
+    assert res_no_state.headers["location"] == "/?auth_error=csrf_detected"
+
+    # 2. Sem cookie oauth_state
+    async_client.cookies.clear()
+    res_no_cookie = await async_client.get(
+        "/auth/callback/google?code=valid_code&state=secret_state_123", follow_redirects=False
+    )
+    assert res_no_cookie.status_code == 302
+    assert res_no_cookie.headers["location"] == "/?auth_error=csrf_detected"
+
+    # 3. State divergente do cookie (ataque Login CSRF)
+    async_client.cookies.set("oauth_state", "legitimate_state")
+    res_mismatch = await async_client.get(
+        "/auth/callback/google?code=valid_code&state=attacker_state", follow_redirects=False
+    )
+    assert res_mismatch.status_code == 302
+    assert res_mismatch.headers["location"] == "/?auth_error=csrf_detected"
+
+
+@pytest.mark.asyncio
 async def test_google_callback_oauth_failure_and_invalid_token(async_client: AsyncClient):
     """Valida tratamento de falhas na troca de código e tokens inválidos."""
+    state = "valid_state_token"
+    async_client.cookies.set("oauth_state", state)
+
     # 1. Falha com OAuthError na troca de código
     with patch("app.api.web.google_oauth_adapter.exchange_code", new_callable=AsyncMock) as mock_ex:
         mock_ex.side_effect = OAuthError("Token exchange failed")
-        res = await async_client.get("/auth/callback/google?code=bad_code", follow_redirects=False)
+        res = await async_client.get(
+            f"/auth/callback/google?code=bad_code&state={state}", follow_redirects=False
+        )
         assert res.status_code == 302
         assert res.headers["location"] == "/?auth_error=oauth_failed"
 
     # 2. Resposta sem access_token
+    async_client.cookies.set("oauth_state", state)
     with patch("app.api.web.google_oauth_adapter.exchange_code", new_callable=AsyncMock) as mock_ex:
         mock_ex.return_value = {"error": "no_token"}
         res = await async_client.get(
-            "/auth/callback/google?code=code_without_token", follow_redirects=False
+            f"/auth/callback/google?code=code_without_token&state={state}", follow_redirects=False
         )
         assert res.status_code == 302
         assert res.headers["location"] == "/?auth_error=oauth_failed"
@@ -179,6 +215,8 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
     )
 
     # 1. Novo usuário logando via Google OAuth
+    state_new = "state_new_user_123"
+    async_client.cookies.set("oauth_state", state_new)
     with (
         patch("app.api.web.google_oauth_adapter.exchange_code", new_callable=AsyncMock) as mock_ex,
         patch(
@@ -189,7 +227,7 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
         mock_info.return_value = user_info
 
         res_callback = await async_client.get(
-            "/auth/callback/google?code=valid_code", follow_redirects=False
+            f"/auth/callback/google?code=valid_code&state={state_new}", follow_redirects=False
         )
         assert res_callback.status_code == 302
         assert res_callback.headers["location"] == "/"
@@ -202,6 +240,8 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
         assert "logout-btn" in res_home.text
 
     # 2. Usuário existente logando novamente (reutilização/atualização de perfil)
+    state_exist = "state_exist_user_456"
+    async_client.cookies.set("oauth_state", state_exist)
     with (
         patch("app.api.web.google_oauth_adapter.exchange_code", new_callable=AsyncMock) as mock_ex,
         patch(
@@ -212,7 +252,8 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
         mock_info.return_value = user_info
 
         res_callback2 = await async_client.get(
-            "/auth/callback/google?code=another_valid_code", follow_redirects=False
+            f"/auth/callback/google?code=another_valid_code&state={state_exist}",
+            follow_redirects=False,
         )
         assert res_callback2.status_code == 302
         assert res_callback2.headers["location"] == "/"
@@ -256,9 +297,12 @@ async def test_google_callback_direct():
         return_value=(user_mock, "jwt_token_google")
     )
 
+    req = MagicMock(spec=Request)
+    req.cookies = {"oauth_state": "direct_state_123"}
     resp = await google_callback(
-        request=MagicMock(spec=Request),
+        request=req,
         code="valid_code",
+        state="direct_state_123",
         auth_service=auth_service_mock,
     )
     assert resp.status_code == 302
@@ -268,9 +312,12 @@ async def test_google_callback_direct():
 
     # Cenário de OAuthError levantado pelo AuthService
     auth_service_mock.authenticate_oauth_user = AsyncMock(side_effect=OAuthError("OAuth failed"))
+    req_err = MagicMock(spec=Request)
+    req_err.cookies = {"oauth_state": "direct_state_123"}
     resp_err = await google_callback(
-        request=MagicMock(spec=Request),
+        request=req_err,
         code="bad_code",
+        state="direct_state_123",
         auth_service=auth_service_mock,
     )
     assert resp_err.status_code == 302

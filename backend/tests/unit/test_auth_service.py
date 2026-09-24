@@ -179,7 +179,14 @@ async def test_auth_service_authenticate_oauth_user_existing_user_update() -> No
     service = AuthService(db=db_mock)
     user, session_token = await service.authenticate_oauth_user(oauth_port_mock, code="code_ok")
 
+    # 1. Usuário existente com firebase_uid preexistente (preserva sem sobrescrever)
     assert user == existing_user
-    assert user.firebase_uid == "google_sub_updated"
+    assert user.firebase_uid == "old_uid"
     assert user.full_name == "Nome Atualizado"
     db_mock.commit.assert_called_once()
+
+    # 2. Usuário existente sem firebase_uid (atribui o novo)
+    user_no_uid = User(id=uuid.uuid4(), firebase_uid="", email="existente2@test.com", full_name="")
+    mock_res.scalar_one_or_none.return_value = user_no_uid
+    user2, _ = await service.authenticate_oauth_user(oauth_port_mock, code="code_ok_2")
+    assert user2.firebase_uid == "google_sub_updated"

@@ -164,10 +164,11 @@ class AuthService:
             self._db.add(settings_entry)
             await self._db.commit()
         else:
-            user.firebase_uid = firebase_uid
+            if not user.firebase_uid:
+                user.firebase_uid = firebase_uid
             if user_info.full_name and not user.full_name:
                 user.full_name = user_info.full_name
             await self._db.commit()
 
-        session_token = self.create_session_jwt(uid=firebase_uid, email=user.email)
+        session_token = self.create_session_jwt(uid=user.firebase_uid, email=user.email)
         return user, session_token
