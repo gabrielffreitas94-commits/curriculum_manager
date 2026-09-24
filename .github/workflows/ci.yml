@@ -208,4 +208,22 @@ jobs:
       - name: Enforce Hexagonal Architecture Boundaries
         run: python scripts/check_hexagonal_architecture.py
 
+  # ============================================================================
+  # OBSERVABILITY GATE (Guardião da Telemetria & Zero Pontos Cegos)
+  # ============================================================================
+  telemetry-gate:
+    name: "Observability Gate: Zero Blind Spots & Telemetry Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Enforce Observability & Structured Logging Compliance
+        run: python scripts/check_telemetry_compliance.py
+
 
