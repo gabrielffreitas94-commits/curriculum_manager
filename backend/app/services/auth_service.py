@@ -64,7 +64,7 @@ class AuthService:
 
         Executa duas etapas de resolução:
         1. Validação do JWT de sessão assinado com a SECRET_KEY do servidor.
-        2. Fallback para validação via AuthPort (Bearer / tokens de mock).
+        2. Fallback para validação de token via AuthPort (ex: Firebase / Bearer).
 
         Args:
             session_token: Valor do cookie session_token recebido na requisição.
@@ -96,7 +96,7 @@ class AuthService:
         except Exception:
             pass
 
-        # 2. Fallback para AuthPort caso configurado (compatibilidade com mock e Bearer)
+        # 2. Fallback para AuthPort caso configurado (validação de token externo)
         if self._auth_port is not None:
             try:
                 auth_user: AuthUser = await self._auth_port.verify_token(session_token)
@@ -171,43 +171,3 @@ class AuthService:
 
         session_token = self.create_session_jwt(uid=firebase_uid, email=user.email)
         return user, session_token
-
-    async def authenticate_mock_user(
-        self, mock_identifier: str, email: str, full_name: str
-    ) -> tuple[User, str]:
-        """Autentica ou provisiona usuário para fins de desenvolvimento e testes locais.
-
-        Args:
-            mock_identifier: Identificador do mock (ex: 'mock_google_user').
-            email: E-mail do usuário simulado.
-            full_name: Nome exibível simulado.
-
-        Returns:
-            tuple[User, str]: Tupla contendo o usuário e o identificador do token mock.
-        """
-        mock_uid = f"mock_uid_{mock_identifier}"
-        result = await self._db.execute(
-            select(User).where(User.firebase_uid == mock_uid, User.deleted_at.is_(None))
-        )
-        user = result.scalar_one_or_none()
-
-        if not user:
-            user = User(
-                firebase_uid=mock_uid,
-                email=email,
-                full_name=full_name,
-                is_active=True,
-            )
-            self._db.add(user)
-            await self._db.flush()
-
-            settings_entry = UserSettings(
-                user_id=user.id,
-                preferred_language="pt-BR",
-                email_notifications_enabled=True,
-                in_app_notifications_enabled=True,
-            )
-            self._db.add(settings_entry)
-            await self._db.commit()
-
-        return user, mock_identifier

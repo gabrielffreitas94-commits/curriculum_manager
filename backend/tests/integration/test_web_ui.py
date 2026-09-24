@@ -11,8 +11,6 @@ from app.api.web import (
     _set_session_cookie,
     get_authenticated_web_user,
     google_callback,
-    login_google,
-    login_linkedin,
 )
 from app.core.config import settings
 from app.domain.models import User
@@ -54,6 +52,7 @@ async def test_login_modal_renders_successfully(async_client: AsyncClient):
     assert "Continuar com o Google" in content
     assert "btn-login-linkedin" in content
     assert "Continuar com o LinkedIn" in content
+    assert "Em breve" in content
     assert "closeModal" in content
     assert "Termos de Serviço" in content
 
@@ -74,50 +73,6 @@ async def test_static_css_file_is_served(async_client: AsyncClient):
 
     assert response.status_code == 200
     assert len(response.text) > 0
-
-
-@pytest.mark.asyncio
-async def test_google_login_flow(async_client: AsyncClient):
-    """Valida fluxo de login social com Google, persistência e atualização da interface."""
-    # 1. Primeiro login com Google (cria novo usuário)
-    res_login1 = await async_client.post("/auth/login/google")
-    assert res_login1.status_code == 200
-    assert res_login1.headers.get("HX-Refresh") == "true"
-    assert "session_token" in res_login1.cookies
-    assert res_login1.cookies.get("session_token") == "mock_google_user"
-
-    # 2. Acessa a home e verifica se o usuário está autenticado no header
-    res_home = await async_client.get("/", cookies=res_login1.cookies)
-    assert res_home.status_code == 200
-    assert "Usuário Google" in res_home.text
-    assert "logout-btn" in res_home.text
-
-    # 3. Segundo login com Google (recupera usuário existente)
-    res_login2 = await async_client.post("/auth/login/google")
-    assert res_login2.status_code == 200
-    assert res_login2.headers.get("HX-Refresh") == "true"
-
-
-@pytest.mark.asyncio
-async def test_linkedin_login_flow(async_client: AsyncClient):
-    """Valida fluxo de login social com LinkedIn, persistência e atualização da interface."""
-    # 1. Primeiro login com LinkedIn (cria novo usuário)
-    res_login1 = await async_client.post("/auth/login/linkedin")
-    assert res_login1.status_code == 200
-    assert res_login1.headers.get("HX-Refresh") == "true"
-    assert "session_token" in res_login1.cookies
-    assert res_login1.cookies.get("session_token") == "mock_linkedin_user"
-
-    # 2. Acessa a home e verifica se o usuário está autenticado no header
-    res_home = await async_client.get("/", cookies=res_login1.cookies)
-    assert res_home.status_code == 200
-    assert "Usuário LinkedIn" in res_home.text
-    assert "logout-btn" in res_home.text
-
-    # 3. Segundo login com LinkedIn (recupera usuário existente)
-    res_login2 = await async_client.post("/auth/login/linkedin")
-    assert res_login2.status_code == 200
-    assert res_login2.headers.get("HX-Refresh") == "true"
 
 
 @pytest.mark.asyncio
@@ -166,44 +121,6 @@ async def test_get_authenticated_web_user_direct():
     assert user_found == user_mock
     assert user_found.email == "direct@test.com"
     auth_service_mock.get_authenticated_user.assert_awaited_with("mock_direct_test_user")
-
-
-@pytest.mark.asyncio
-async def test_social_login_direct():
-    """Valida execução direta dos handlers de login social delegando para AuthService."""
-    auth_service_mock = MagicMock(spec=AuthService)
-
-    # 1. Google
-    user_google = User(
-        id=uuid.uuid4(),
-        firebase_uid="mock_uid_mock_google_user",
-        email="usuario.google@exemplo.com",
-    )
-    auth_service_mock.authenticate_mock_user = AsyncMock(
-        return_value=(user_google, "jwt_mock_google")
-    )
-    resp_google = await login_google(
-        request=MagicMock(spec=Request), auth_service=auth_service_mock
-    )
-    assert resp_google.status_code == 200
-    assert resp_google.headers.get("HX-Refresh") == "true"
-    assert "session_token" in resp_google.headers.get("set-cookie", "")
-
-    # 2. LinkedIn
-    user_li = User(
-        id=uuid.uuid4(),
-        firebase_uid="mock_uid_mock_linkedin_user",
-        email="usuario.linkedin@exemplo.com",
-    )
-    auth_service_mock.authenticate_mock_user = AsyncMock(
-        return_value=(user_li, "jwt_mock_linkedin")
-    )
-    resp_linkedin = await login_linkedin(
-        request=MagicMock(spec=Request), auth_service=auth_service_mock
-    )
-    assert resp_linkedin.status_code == 200
-    assert resp_linkedin.headers.get("HX-Refresh") == "true"
-    assert "session_token" in resp_linkedin.headers.get("set-cookie", "")
 
 
 @pytest.mark.asyncio

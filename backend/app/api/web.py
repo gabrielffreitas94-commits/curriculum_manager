@@ -93,40 +93,6 @@ async def google_callback(
     return response
 
 
-@router.post("/auth/login/google", response_class=HTMLResponse, status_code=status.HTTP_200_OK)
-async def login_google(
-    request: Request,
-    auth_service: AuthService = Depends(get_auth_service),
-) -> Response:
-    """Realiza autenticação via conta Google (fallback / mock de desenvolvimento)."""
-    _, token_val = await auth_service.authenticate_mock_user(
-        mock_identifier="mock_google_user",
-        email="usuario.google@exemplo.com",
-        full_name="Usuário Google",
-    )
-    response = HTMLResponse(content="", status_code=status.HTTP_200_OK)
-    _set_session_cookie(response=response, session_token=token_val)
-    response.headers["HX-Refresh"] = "true"
-    return response
-
-
-@router.post("/auth/login/linkedin", response_class=HTMLResponse, status_code=status.HTTP_200_OK)
-async def login_linkedin(
-    request: Request,
-    auth_service: AuthService = Depends(get_auth_service),
-) -> Response:
-    """Realiza autenticação via conta LinkedIn (fallback / mock de desenvolvimento)."""
-    _, token_val = await auth_service.authenticate_mock_user(
-        mock_identifier="mock_linkedin_user",
-        email="usuario.linkedin@exemplo.com",
-        full_name="Usuário LinkedIn",
-    )
-    response = HTMLResponse(content="", status_code=status.HTTP_200_OK)
-    _set_session_cookie(response=response, session_token=token_val)
-    response.headers["HX-Refresh"] = "true"
-    return response
-
-
 @router.post("/auth/logout", response_class=HTMLResponse, status_code=status.HTTP_200_OK)
 async def logout(request: Request) -> Response:
     """Encerra a sessão Web do usuário removendo o cookie session_token."""

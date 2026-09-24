@@ -183,37 +183,3 @@ async def test_auth_service_authenticate_oauth_user_existing_user_update() -> No
     assert user.firebase_uid == "google_sub_updated"
     assert user.full_name == "Nome Atualizado"
     db_mock.commit.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_auth_service_authenticate_mock_user_new_and_existing() -> None:
-    """Valida autenticação mock para novo usuário e usuário recorrente."""
-    db_mock = MagicMock(spec=AsyncSession)
-    mock_res = MagicMock()
-    mock_res.scalar_one_or_none.return_value = None
-    db_mock.execute = AsyncMock(return_value=mock_res)
-    db_mock.flush = AsyncMock()
-    db_mock.commit = AsyncMock()
-
-    service = AuthService(db=db_mock)
-
-    # 1. Novo usuário mock
-    user1, tok1 = await service.authenticate_mock_user(
-        mock_identifier="mock_test",
-        email="mock1@test.com",
-        full_name="Mock 1",
-    )
-    assert user1.email == "mock1@test.com"
-    assert tok1 == "mock_test"
-    db_mock.flush.assert_called_once()
-    db_mock.commit.assert_called_once()
-
-    # 2. Usuário mock existente
-    mock_res.scalar_one_or_none.return_value = user1
-    user2, tok2 = await service.authenticate_mock_user(
-        mock_identifier="mock_test",
-        email="mock1@test.com",
-        full_name="Mock 1",
-    )
-    assert user2 == user1
-    assert tok2 == "mock_test"
