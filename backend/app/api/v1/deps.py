@@ -22,8 +22,12 @@ from app.ports.oauth_port import OAuthPort
 if TYPE_CHECKING:
     from app.ports.resume_parser_port import ResumeParserPort
     from app.services.auth_service import AuthService
+    from app.services.copilot_service import CopilotService
     from app.services.document_service import DocumentService
+    from app.services.job_ingest_service import JobIngestService
     from app.services.profile_service import ProfileService
+    from app.services.prompt_skill_service import PromptSkillService
+    from app.services.resume_service import ResumeService
     from app.services.user_service import UserService
 
 # Instâncias dos adaptadores de autenticação
@@ -203,3 +207,85 @@ def get_resume_parser_adapter(api_key: str | None = None) -> "ResumeParserPort":
     from app.adapters.gemini_resume_parser_adapter import GeminiResumeParserAdapter
 
     return GeminiResumeParserAdapter(api_key=api_key)
+
+
+async def get_prompt_skill_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> "PromptSkillService":
+    """Injeta uma instância ativa de PromptSkillService com a sessão do banco.
+
+    Args:
+        db: Sessão ativa do banco de dados relacional.
+
+    Returns:
+        PromptSkillService pronto para uso.
+    """
+    from app.services.prompt_skill_service import PromptSkillService
+
+    return PromptSkillService(db=db)
+
+
+def get_job_ingest_service() -> "JobIngestService":
+    """Injeta uma instância ativa de JobIngestService.
+
+    Returns:
+        JobIngestService pronto para ingestão de vagas.
+    """
+    from app.services.job_ingest_service import JobIngestService
+
+    return JobIngestService()
+
+
+async def get_copilot_service(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> "CopilotService":
+    """Injeta uma instância de CopilotService configurada com o adaptador de IA do usuário.
+
+    Args:
+        db: Sessão ativa do banco de dados relacional.
+        current_user: Usuário autenticado proprietário.
+
+    Returns:
+        CopilotService pronto para interações conversacionais.
+    """
+    from app.adapters.gemini_ai_adapter import GeminiAIAdapter
+    from app.services.copilot_service import CopilotService
+
+    api_key = resolve_gemini_api_key(current_user)
+    ai_adapter = GeminiAIAdapter(api_key=api_key)
+    return CopilotService(db=db, ai_port=ai_adapter)
+
+
+def create_copilot_service(db: AsyncSession, user: User) -> "CopilotService":
+    """Cria uma instância de CopilotService para um usuário específico.
+
+    Args:
+        db: Sessão ativa do banco de dados relacional.
+        user: Usuário autenticado proprietário.
+
+    Returns:
+        CopilotService configurado.
+    """
+    from app.adapters.gemini_ai_adapter import GeminiAIAdapter
+    from app.services.copilot_service import CopilotService
+
+    api_key = resolve_gemini_api_key(user)
+    ai_adapter = GeminiAIAdapter(api_key=api_key)
+    return CopilotService(db=db, ai_port=ai_adapter)
+
+
+async def get_resume_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> "ResumeService":
+    """Injeta uma instância ativa de ResumeService com a sessão do banco.
+
+    Args:
+        db: Sessão ativa do banco de dados relacional.
+
+    Returns:
+        ResumeService pronto para síntese e análise de currículos.
+    """
+    from app.services.resume_service import ResumeService
+
+    return ResumeService(db=db)

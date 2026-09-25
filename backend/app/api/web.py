@@ -1,29 +1,51 @@
-"""Roteador Web do ThothCVs AI (Driving Adapter)."""
-
 import hmac
+import html
+import json
 import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import (
+    create_copilot_service,
     get_auth_service,
+    get_job_ingest_service,
     get_profile_service,
+    get_prompt_skill_service,
     get_resume_parser_adapter,
+    get_resume_service,
     google_oauth_adapter,
     resolve_gemini_api_key,
 )
+from app.api.v1.schemas.resume import ResumeGenerateRequest
 from app.core.config import settings
+from app.core.database import get_db_session
 from app.core.file_security import FileSecurityError, validate_resume_file
 from app.core.logging import get_logger
 from app.core.telemetry import set_user_id
+from app.core.url_scraper import URLScraperError
 from app.domain.models import User
+from app.ports.ai_port import ChatMessage
 from app.ports.oauth_port import OAuthError
 from app.ports.resume_parser_port import ParsedProfileDTO, ResumeParserError
 from app.services.auth_service import AuthService
+from app.services.job_ingest_service import JobIngestService
 from app.services.profile_service import ProfileService
+from app.services.prompt_skill_service import PromptSkillService
+from app.services.resume_service import ResumeService
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -307,3 +329,277 @@ async def confirm_profile_import(
     response = Response(status_code=status.HTTP_200_OK)
     response.headers["HX-Redirect"] = "/profile"
     return response
+
+
+# ==================== GERADOR DE CURRÍCULO & TAILORING (WEB UI) ====================
+@router.get("/resumes/new", response_class=HTMLResponse, status_code=status.HTTP_200_OK)
+async def new_resume_page(
+    request: Request,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    prompt_skill_service: PromptSkillService = Depends(get_prompt_skill_service),
+) -> Response:
+    """Renderiza a página interativa de criação e tailoring de currículo sob medida."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    skills = await prompt_skill_service.list_active_skills(user_id=current_user.id)
+    return templates.TemplateResponse(
+        request=request,
+        name="resumes/new.html.jinja2",
+        context={
+            "request": request,
+            "current_user": current_user,
+            "active_tab": "resumes",
+            "skills": skills,
+            "messages": [],
+            "prompt_skill_slug": "google-xyz",
+            "history_json": "[]",
+            "job_description": "",
+        },
+    )
+
+
+@router.post("/resumes/scrape-job-url", response_class=HTMLResponse)
+async def scrape_job_url(
+    url: str = Form(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    job_ingest_service: JobIngestService = Depends(get_job_ingest_service),
+) -> Response:
+    """Extrai com segurança o texto de uma vaga a partir de URL pública.
+
+    Implementa blindagem rigorosa anti-SSRF (CWE-918).
+    """
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    try:
+        text = await job_ingest_service.extract_text_from_url(url=url)
+    except (HTTPException, URLScraperError, ValueError) as exc:
+        detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+        logger.warning("web_job_url_scraping_failed", url=url, error=detail)
+        safe_exc = html.escape(str(detail))
+        return HTMLResponse(
+            content=(
+                '<div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 '
+                'dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 space-y-1">'
+                f"<strong>⚠️ Falha ao extrair vaga:</strong> <span>{safe_exc}</span></div>"
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    escaped_json = json.dumps(text)
+    response_content = (
+        f"<script>\n"
+        f"  var input = document.getElementById('job-description-input');\n"
+        f"  if (input) {{\n"
+        f"    input.value = {escaped_json};\n"
+        f"    handleJobDescriptionChange(input.value);\n"
+        f"  }}\n"
+        f"</script>\n"
+        '<div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 '
+        "dark:border-emerald-900 text-xs text-emerald-700 dark:text-emerald-300 "
+        'flex items-center justify-between">\n'
+        f"  <span>✅ Conteúdo da vaga importado com sucesso "
+        f"({len(text)} caracteres extraídos).</span>\n"
+        f"</div>"
+    )
+    return HTMLResponse(content=response_content, status_code=status.HTTP_200_OK)
+
+
+@router.post("/resumes/upload-job-doc", response_class=HTMLResponse)
+async def upload_job_doc(
+    file: UploadFile = File(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    job_ingest_service: JobIngestService = Depends(get_job_ingest_service),
+) -> Response:
+    """Extrai texto do anúncio da vaga a partir do upload de documento (PDF/DOCX)."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    file_bytes = await file.read()
+    try:
+        text = job_ingest_service.extract_text_from_document(
+            file_bytes=file_bytes, filename=file.filename or "vaga.pdf"
+        )
+    except (HTTPException, FileSecurityError, ValueError) as exc:
+        detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+        logger.warning("web_job_doc_upload_failed", filename=file.filename, error=detail)
+        safe_exc = html.escape(str(detail))
+        return HTMLResponse(
+            content=(
+                '<div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 '
+                'dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 space-y-1">'
+                f"<strong>⚠️ Falha ao ler documento:</strong> <span>{safe_exc}</span></div>"
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    escaped_json = json.dumps(text)
+    response_content = (
+        f"<script>\n"
+        f"  var input = document.getElementById('job-description-input');\n"
+        f"  if (input) {{\n"
+        f"    input.value = {escaped_json};\n"
+        f"    handleJobDescriptionChange(input.value);\n"
+        f"  }}\n"
+        f"</script>\n"
+        '<div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 '
+        "dark:border-emerald-900 text-xs text-emerald-700 dark:text-emerald-300 "
+        'flex items-center justify-between">\n'
+        f"  <span>✅ Documento processado com sucesso "
+        f"({len(text)} caracteres extraídos).</span>\n"
+        f"</div>"
+    )
+    return HTMLResponse(content=response_content, status_code=status.HTTP_200_OK)
+
+
+@router.post("/resumes/analyze-match", response_class=HTMLResponse)
+async def analyze_match(
+    request: Request,
+    job_description: str = Form(""),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    resume_service: ResumeService = Depends(get_resume_service),
+) -> Response:
+    """Calcula a aderência semântica e lacunas contra o Dossiê Mestre do usuário."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    if not job_description.strip():
+        return HTMLResponse(
+            content=(
+                '<div id="match-analysis-container" class="bg-white dark:bg-slate-900 border '
+                "border-amber-200 dark:border-amber-900 rounded-2xl p-6 shadow-sm text-xs "
+                'text-amber-700 dark:text-amber-300">⚠️ Por favor, informe a descrição da vaga '
+                "antes de calcular a aderência.</div>"
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    match_result = await resume_service.match_preview(
+        user=current_user, job_description=job_description
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="resumes/partials/match_card.html.jinja2",
+        context={"request": request, "match_result": match_result},
+    )
+
+
+@router.post("/resumes/copilot-chat", response_class=HTMLResponse)
+async def copilot_chat_interaction(
+    request: Request,
+    message: str = Form(...),
+    job_description: str = Form(""),
+    prompt_skill_slug: str = Form("google-xyz"),
+    history_json: str = Form("[]"),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Interação conversacional com o Copilot de IA para refinamento de currículo."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    raw_history: list[dict[str, str]] = []
+    try:
+        raw_history = json.loads(history_json)
+    except Exception:
+        raw_history = []
+
+    chat_messages = [
+        ChatMessage(role=m.get("role", "user"), content=m.get("content", ""))
+        for m in raw_history
+        if "role" in m and "content" in m
+    ]
+
+    if not job_description.strip():
+        return templates.TemplateResponse(
+            request=request,
+            name="resumes/partials/copilot_chat.html.jinja2",
+            context={
+                "request": request,
+                "messages": chat_messages,
+                "job_description": "",
+                "prompt_skill_slug": prompt_skill_slug,
+                "history_json": history_json,
+                "error_message": (
+                    "Por favor, preencha ou importe a descrição da vaga antes "
+                    "de conversar com o Copilot."
+                ),
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    chat_messages.append(ChatMessage(role="user", content=message))
+    copilot_service = create_copilot_service(db=db, user=current_user)
+
+    try:
+        reply = await copilot_service.chat(
+            user=current_user,
+            job_description=job_description,
+            prompt_skill_slug=prompt_skill_slug,
+            messages=chat_messages,
+        )
+        chat_messages.append(ChatMessage(role="assistant", content=reply))
+        error_msg = None
+    except Exception as exc:
+        logger.error("web_copilot_chat_error", error=str(exc), exc_info=True)
+        error_msg = f"Falha ao comunicar com o assistente de IA: {exc}"
+
+    updated_history = json.dumps([{"role": m.role, "content": m.content} for m in chat_messages])
+
+    return templates.TemplateResponse(
+        request=request,
+        name="resumes/partials/copilot_chat.html.jinja2",
+        context={
+            "request": request,
+            "messages": chat_messages,
+            "job_description": job_description,
+            "prompt_skill_slug": prompt_skill_slug,
+            "history_json": updated_history,
+            "error_message": error_msg,
+        },
+    )
+
+
+@router.post("/resumes/generate-custom")
+async def generate_custom_resume(
+    job_description: str = Form(...),
+    prompt_skill_slug: str = Form("google-xyz"),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    resume_service: ResumeService = Depends(get_resume_service),
+) -> Response:
+    """Dispara a geração de currículo inteligente e estruturado a partir da interface web."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    result = await resume_service.generate_resume(
+        user=current_user,
+        payload=ResumeGenerateRequest(
+            job_description=job_description,
+            prompt_skill_slug=prompt_skill_slug,
+        ),
+    )
+    logger.info(
+        "web_custom_resume_generated",
+        user_id=str(current_user.id),
+        resume_id=str(result.resume_id),
+    )
+    return RedirectResponse(
+        url=f"/resumes/{result.resume_id}/preview", status_code=status.HTTP_302_FOUND
+    )

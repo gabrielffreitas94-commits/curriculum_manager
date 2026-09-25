@@ -94,3 +94,7 @@ def validate_resume_file(
             "(Magic Bytes inválidos)."
         )
     return MIME_DOCX, ".docx"
+
+
+# Alias genérico para validação de documentos (currículos e anúncios de vagas)
+validate_uploaded_file = validate_resume_file

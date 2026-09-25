@@ -20,21 +20,28 @@ from app.api.v1.notifications import (
 )
 from app.api.v1.resumes import (
     analyze_job,
+    copilot_chat,
     export_resume_docx,
     export_resume_pdf,
     generate_resume,
     get_resume_service,
+    ingest_job_from_document,
+    ingest_job_from_url,
+    list_prompt_skills,
     match_preview,
 )
 from app.api.v1.schemas.notification import UnreadCountResponse
 from app.api.v1.schemas.resume import (
+    CopilotChatRequest,
+    CopilotMessageSchema,
     JobAnalyzeRequest,
+    JobUrlIngestRequest,
     MatchPreviewRequest,
     ResumeGenerateRequest,
 )
 from app.api.v1.schemas.user import UserSettingsUpdateRequest
 from app.api.v1.users import get_my_settings, update_my_settings
-from app.domain.models import User
+from app.domain.models import PromptSkill, User
 
 
 @pytest.fixture
@@ -180,3 +187,58 @@ async def test_resumes_router_direct(mock_user: User) -> None:
     assert docx_resp.status_code == 200
     assert "openxmlformats" in docx_resp.media_type
     assert docx_resp.body == b"PK\x03\x04"
+
+    # list_prompt_skills
+    prompt_service = MagicMock()
+    mock_skill = PromptSkill(
+        id=uuid.uuid4(),
+        slug="google-xyz",
+        name="Google XYZ",
+        description="Fórmula de impacto",
+        category="methodology",
+        system_prompt="Instruções",
+        default_language="pt-BR",
+        is_system_default=True,
+    )
+    prompt_service.list_active_skills = AsyncMock(return_value=[mock_skill])
+    skills_resp = await list_prompt_skills(current_user=mock_user, service=prompt_service)
+    assert len(skills_resp) == 1
+    assert skills_resp[0].slug == "google-xyz"
+
+    # ingest_job_from_url
+    ingest_service = MagicMock()
+    ingest_service.extract_text_from_url = AsyncMock(return_value="Conteúdo da vaga extraído.")
+    url_resp = await ingest_job_from_url(
+        body=JobUrlIngestRequest(url="https://jobs.example.com/123"),
+        current_user=mock_user,
+        service=ingest_service,
+    )
+    assert url_resp.source_type == "url"
+    assert url_resp.job_description == "Conteúdo da vaga extraído."
+
+    # ingest_job_from_document
+    ingest_service.extract_text_from_document = MagicMock(return_value="Texto do documento PDF.")
+    mock_upload = MagicMock()
+    mock_upload.filename = "vaga.pdf"
+    mock_upload.read = AsyncMock(return_value=b"%PDF-1.4 mock")
+    doc_ingest_resp = await ingest_job_from_document(
+        file=mock_upload,
+        current_user=mock_user,
+        service=ingest_service,
+    )
+    assert doc_ingest_resp.source_type == "document"
+    assert doc_ingest_resp.job_description == "Texto do documento PDF."
+
+    # copilot_chat
+    copilot_service = MagicMock()
+    copilot_service.chat = AsyncMock(return_value="Sugestão de tailoring do Copilot.")
+    copilot_resp = await copilot_chat(
+        body=CopilotChatRequest(
+            job_description=desc,
+            prompt_skill_slug="google-xyz",
+            messages=[CopilotMessageSchema(role="user", content="Como destacar meus resultados?")],
+        ),
+        current_user=mock_user,
+        service=copilot_service,
+    )
+    assert copilot_resp.reply == "Sugestão de tailoring do Copilot."

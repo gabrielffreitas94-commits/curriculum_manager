@@ -85,3 +85,51 @@ class MatchPreviewResponse(BaseModel):
     missing_mandatory: list[str] = Field(default_factory=list)
     missing_desirable: list[str] = Field(default_factory=list)
     suggested_keywords: list[str] = Field(default_factory=list)
+
+
+class PromptSkillResponse(BaseModel):
+    """Metadados de exibição de uma metodologia / persona de prompt."""
+
+    id: uuid.UUID
+    slug: str
+    name: str
+    description: str
+    category: str
+    system_prompt: str
+    default_language: str
+    is_system_default: bool
+
+
+class JobUrlIngestRequest(BaseModel):
+    """Payload para ingestão de vaga via URL pública."""
+
+    url: str = Field(..., min_length=5, max_length=2000)
+
+
+class JobIngestResponse(BaseModel):
+    """Resposta estruturada da extração textual de uma oportunidade de emprego."""
+
+    job_description: str
+    source_type: str
+    char_count: int
+
+
+class CopilotMessageSchema(BaseModel):
+    """Mensagem de histórico para o Copilot de IA."""
+
+    role: str
+    content: str
+
+
+class CopilotChatRequest(BaseModel):
+    """Payload da requisição consultiva ao Copilot Tailoring Assistant."""
+
+    job_description: str = Field(..., min_length=10, max_length=50000)
+    prompt_skill_slug: str = Field(default="google-xyz", max_length=50)
+    messages: list[CopilotMessageSchema] = Field(..., min_length=1)
+
+
+class CopilotChatResponse(BaseModel):
+    """Resposta consultiva devolvida pelo Copilot de IA."""
+
+    reply: str

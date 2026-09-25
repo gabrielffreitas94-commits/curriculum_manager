@@ -231,3 +231,59 @@ async def test_get_resume_parser_adapter_and_profile_service() -> None:
     prof_service = await get_profile_service(db=mock_db)
     assert isinstance(prof_service, ProfileService)
     assert prof_service._db == mock_db
+
+
+@pytest.mark.asyncio
+async def test_sprint2_deps_factories() -> None:
+    """Valida instanciação das fábricas de dependências adicionadas na Sprint 2."""
+    from app.api.v1.deps import (
+        create_copilot_service,
+        get_copilot_service,
+        get_job_ingest_service,
+        get_prompt_skill_service,
+        get_resume_service,
+    )
+    from app.services.copilot_service import CopilotService
+    from app.services.job_ingest_service import JobIngestService
+    from app.services.prompt_skill_service import PromptSkillService
+    from app.services.resume_service import ResumeService
+
+    mock_db = MagicMock()
+    user = User(id=uuid.uuid4(), email="deps_tester@thoth.ai")
+
+    # PromptSkillService
+    prompt_svc = await get_prompt_skill_service(db=mock_db)
+    assert isinstance(prompt_svc, PromptSkillService)
+    assert prompt_svc._db == mock_db
+
+    # JobIngestService
+    job_svc = get_job_ingest_service()
+    assert isinstance(job_svc, JobIngestService)
+
+    # CopilotService via get_copilot_service
+    copilot_svc = await get_copilot_service(db=mock_db, current_user=user)
+    assert isinstance(copilot_svc, CopilotService)
+    assert copilot_svc._db == mock_db
+
+    # CopilotService via create_copilot_service
+    copilot_created = create_copilot_service(db=mock_db, user=user)
+    assert isinstance(copilot_created, CopilotService)
+    assert copilot_created._db == mock_db
+
+    # ResumeService via get_resume_service
+    resume_svc = await get_resume_service(db=mock_db)
+    assert isinstance(resume_svc, ResumeService)
+    assert resume_svc._db == mock_db
+
+    # UserService e AuthService
+    from app.api.v1.deps import get_auth_service, get_user_service
+    from app.services.auth_service import AuthService
+    from app.services.user_service import UserService
+
+    user_svc = await get_user_service(db=mock_db)
+    assert isinstance(user_svc, UserService)
+    assert user_svc.db == mock_db
+
+    auth_svc = await get_auth_service(db=mock_db)
+    assert isinstance(auth_svc, AuthService)
+    assert auth_svc._db == mock_db
