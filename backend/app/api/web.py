@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters.gemini_ai_adapter import GeminiAIAdapter
 from app.api.v1.deps import (
     create_copilot_service,
     get_application_service,
@@ -34,6 +35,7 @@ from app.api.v1.deps import (
     get_prompt_skill_service,
     get_resume_parser_adapter,
     get_resume_service,
+    get_user_service,
     google_oauth_adapter,
     resolve_gemini_api_key,
 )
@@ -44,13 +46,14 @@ from app.api.v1.schemas.application import (
 )
 from app.api.v1.schemas.resume import ResumeGenerateRequest
 from app.core.config import settings
+from app.core.crypto import crypto_service
 from app.core.database import get_db_session
 from app.core.file_security import FileSecurityError, validate_resume_file
 from app.core.grounding_audit import GroundingAuditEngine
 from app.core.logging import get_logger
 from app.core.telemetry import set_user_id
 from app.core.url_scraper import URLScraperError
-from app.domain.models import Application, GeneratedResume, User
+from app.domain.models import Application, GeneratedResume, User, UserSettings
 from app.ports.ai_port import ChatMessage
 from app.ports.oauth_port import OAuthError
 from app.ports.resume_parser_port import ParsedProfileDTO, ResumeParserError
@@ -61,6 +64,7 @@ from app.services.job_ingest_service import JobIngestService
 from app.services.profile_service import ProfileService
 from app.services.prompt_skill_service import PromptSkillService
 from app.services.resume_service import ResumeService
+from app.services.user_service import UserService
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -1164,3 +1168,423 @@ async def application_add_note(
             "notes": app_detail.notes,
         },
     )
+
+
+# ==============================================================================
+# SPRINT 4: CONFIGURAÇÕES, BYOK GEMINI, I18N & CONFORMIDADE LGPD
+# ==============================================================================
+
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_page(
+    request: Request,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Exibe a central de configurações, chave BYOK Gemini, idioma e LGPD."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+    result = await db.execute(stmt)
+    user_settings = result.scalar_one_or_none()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="settings/index.html.jinja2",
+        context={
+            "request": request,
+            "user_settings": user_settings,
+            "current_user": current_user,
+            "active_tab": "settings",
+        },
+    )
+
+
+@router.post("/settings/gemini-key", response_class=HTMLResponse)
+async def settings_save_gemini_key(
+    request: Request,
+    gemini_api_key: str = Form(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Cifra via AES-GCM-256 com AAD e persiste a chave pessoal do Gemini."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    clean_key = gemini_api_key.strip()
+    if not clean_key:
+        error_html = (
+            '<div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 '
+            "border border-rose-200 dark:border-rose-800 text-xs font-semibold "
+            "text-rose-800 dark:text-rose-300 flex items-center justify-between "
+            'animate-in fade-in">\n'
+            "  <span>⚠️ A chave de API não pode estar em branco.</span>\n"
+            '  <button type="button" onclick="this.parentElement.remove()" '
+            'class="text-rose-600 dark:text-rose-400 hover:opacity-80 cursor-pointer">✕</button>\n'
+            "</div>"
+        )
+        return HTMLResponse(content=error_html, status_code=status.HTTP_400_BAD_REQUEST)
+
+    user_aad = str(current_user.id).encode("utf-8")
+    encrypted_key = crypto_service.encrypt(clean_key, associated_data=user_aad)
+
+    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+    result = await db.execute(stmt)
+    user_settings = result.scalar_one_or_none()
+
+    if not user_settings:
+        user_settings = UserSettings(
+            user_id=current_user.id,
+            encrypted_gemini_api_key=encrypted_key,
+        )
+        db.add(user_settings)
+    else:
+        user_settings.encrypted_gemini_api_key = encrypted_key
+        user_settings.updated_at = datetime.now(UTC)
+
+    await db.commit()
+
+    logger.info(
+        "web_gemini_key_saved",
+        user_id=str(current_user.id),
+    )
+
+    success_html = (
+        '<div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 '
+        "border border-emerald-200 dark:border-emerald-800 text-xs font-semibold "
+        "text-emerald-800 dark:text-emerald-300 flex items-center justify-between "
+        'animate-in fade-in">\n'
+        "  <span>✅ Chave do Google Gemini salva e cifrada com sucesso "
+        "(AES-GCM-256 com AAD)!</span>\n"
+        '  <button type="button" onclick="this.parentElement.remove()" '
+        'class="text-emerald-600 dark:text-emerald-400 hover:opacity-80 cursor-pointer">'
+        "✕</button>\n"
+        "</div>"
+    )
+    return HTMLResponse(content=success_html)
+
+
+@router.post("/settings/gemini-key/test", response_class=HTMLResponse)
+async def settings_test_gemini_key(
+    request: Request,
+    gemini_api_key: str = Form(""),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Testa a conectividade da chave informada ou persistida com o Google AI Studio."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    key_to_test = gemini_api_key.strip()
+    if not key_to_test:
+        stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+        result = await db.execute(stmt)
+        user_settings = result.scalar_one_or_none()
+        if user_settings and user_settings.encrypted_gemini_api_key:
+            user_aad = str(current_user.id).encode("utf-8")
+            try:
+                key_to_test = crypto_service.decrypt(
+                    user_settings.encrypted_gemini_api_key, associated_data=user_aad
+                )
+            except Exception as exc:
+                logger.warning(
+                    "web_gemini_key_decrypt_failed",
+                    user_id=str(current_user.id),
+                    error=str(exc),
+                )
+                key_to_test = ""
+
+    if not key_to_test:
+        warn_html = (
+            '<div class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 '
+            "border border-amber-200 dark:border-amber-800 text-xs font-semibold "
+            "text-amber-800 dark:text-amber-300 flex items-center justify-between "
+            'animate-in fade-in">\n'
+            "  <span>⚠️ Nenhuma chave informada ou cadastrada para teste.</span>\n"
+            '  <button type="button" onclick="this.parentElement.remove()" '
+            'class="text-amber-600 dark:text-amber-400 hover:opacity-80 cursor-pointer">'
+            "✕</button>\n"
+            "</div>"
+        )
+        return HTMLResponse(content=warn_html)
+
+    start_time = time.perf_counter()
+    try:
+        adapter = GeminiAIAdapter(api_key=key_to_test)
+        await adapter.analyze_job("Software Engineer Python")
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.info(
+            "web_gemini_key_test_success",
+            user_id=str(current_user.id),
+            duration_ms=duration_ms,
+        )
+        success_html = (
+            '<div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 '
+            "border border-emerald-200 dark:border-emerald-800 text-xs font-semibold "
+            "text-emerald-800 dark:text-emerald-300 flex items-center justify-between "
+            'animate-in fade-in">\n'
+            f"  <span>⚡ Conexão com a Google Gemini API validada com sucesso! "
+            f"({duration_ms}ms)</span>\n"
+            '  <button type="button" onclick="this.parentElement.remove()" '
+            'class="text-emerald-600 dark:text-emerald-400 hover:opacity-80 cursor-pointer">'
+            "✕</button>\n"
+            "</div>"
+        )
+        return HTMLResponse(content=success_html)
+    except Exception as exc:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.warning(
+            "web_gemini_key_test_failed",
+            user_id=str(current_user.id),
+            error=str(exc),
+            duration_ms=duration_ms,
+            exc_info=True,
+        )
+        escaped_err = html.escape(str(exc))
+        fail_html = (
+            f'<div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 '
+            f"border border-rose-200 dark:border-rose-800 text-xs font-semibold "
+            f"text-rose-800 dark:text-rose-300 flex items-center justify-between "
+            f'animate-in fade-in">\n'
+            f"  <span>❌ Falha ao validar a chave com o Google AI Studio: {escaped_err}</span>\n"
+            f'  <button type="button" onclick="this.parentElement.remove()" '
+            f'class="text-rose-600 dark:text-rose-400 hover:opacity-80 cursor-pointer">✕</button>\n'
+            f"</div>"
+        )
+        return HTMLResponse(content=fail_html)
+
+
+@router.post("/settings/gemini-key/remove", response_class=HTMLResponse)
+async def settings_remove_gemini_key(
+    request: Request,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Remove a chave pessoal do Gemini e restaura o uso da cota padrão compartilhada."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+    result = await db.execute(stmt)
+    user_settings = result.scalar_one_or_none()
+
+    if user_settings:
+        user_settings.encrypted_gemini_api_key = None
+        user_settings.updated_at = datetime.now(UTC)
+        await db.commit()
+
+    logger.info("web_gemini_key_removed", user_id=str(current_user.id))
+
+    info_html = (
+        '<div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 '
+        "border border-slate-200 dark:border-slate-700 text-xs font-semibold "
+        "text-slate-800 dark:text-slate-200 flex items-center justify-between "
+        'animate-in fade-in">\n'
+        "  <span>ℹ️ Chave pessoal removida. "
+        "O sistema agora utilizará a cota padrão compartilhada.</span>\n"
+        '  <button type="button" onclick="this.parentElement.remove()" '
+        'class="text-slate-500 hover:opacity-80 cursor-pointer">✕</button>\n'
+        "</div>"
+    )
+    return HTMLResponse(content=info_html)
+
+
+@router.post("/settings/language", response_class=HTMLResponse)
+async def settings_update_language(
+    request: Request,
+    response: Response,
+    preferred_language: str = Form(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Atualiza o idioma e dialeto padrão de interface e síntese de currículos."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+    result = await db.execute(stmt)
+    user_settings = result.scalar_one_or_none()
+
+    if not user_settings:
+        user_settings = UserSettings(
+            user_id=current_user.id,
+            preferred_language=preferred_language,
+        )
+        db.add(user_settings)
+    else:
+        user_settings.preferred_language = preferred_language
+        user_settings.updated_at = datetime.now(UTC)
+
+    await db.commit()
+
+    logger.info(
+        "web_language_updated",
+        user_id=str(current_user.id),
+        preferred_language=preferred_language,
+    )
+
+    escaped_lang = html.escape(preferred_language)
+    success_html = (
+        '<div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 '
+        "border border-emerald-200 dark:border-emerald-800 text-xs font-semibold "
+        "text-emerald-800 dark:text-emerald-300 flex items-center justify-between "
+        'animate-in fade-in">\n'
+        f"  <span>✅ Idioma padrão atualizado para <strong>{escaped_lang}</strong> "
+        f"com sucesso!</span>\n"
+        '  <button type="button" onclick="this.parentElement.remove()" '
+        'class="text-emerald-600 dark:text-emerald-400 hover:opacity-80 cursor-pointer">'
+        "✕</button>\n"
+        "</div>"
+    )
+    res = HTMLResponse(content=success_html)
+    res.set_cookie(
+        key="locale",
+        value=preferred_language,
+        max_age=86400 * 365,
+        path="/",
+        samesite="lax",
+    )
+    return res
+
+
+@router.get("/settings/export-data")
+async def settings_export_data(
+    current_user: User | None = Depends(get_authenticated_web_user),
+    profile_service: ProfileService = Depends(get_profile_service),
+    app_service: ApplicationService = Depends(get_application_service),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Exporta o dossiê completo em JSON (Direito à Portabilidade - LGPD Art. 18)."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    start_time = time.perf_counter()
+    raw_dossier = await profile_service.get_full_dossier(current_user.id)
+    apps = await app_service.list_applications(current_user)
+
+    stmt_resumes = select(GeneratedResume).where(GeneratedResume.user_id == current_user.id)
+    res_resumes = await db.execute(stmt_resumes)
+    resumes = res_resumes.scalars().all()
+
+    export_payload = {
+        "exported_at": datetime.now(UTC).isoformat(),
+        "compliance": "LGPD Art. 18, II e V / GDPR Art. 20 (Direito a Portabilidade dos Dados)",
+        "user_profile": {
+            "id": str(current_user.id),
+            "full_name": current_user.full_name,
+            "email": current_user.email,
+            "target_title": current_user.target_title,
+            "location": current_user.location,
+            "phone": current_user.phone,
+            "linkedin_url": current_user.linkedin_url,
+            "github_url": current_user.github_url,
+            "portfolio_url": current_user.portfolio_url,
+            "professional_summary": current_user.professional_summary,
+        },
+        "dossier": {
+            "experiences": [
+                {
+                    "company_name": e.company_name,
+                    "position_title": e.position_title,
+                    "start_date": str(e.start_date) if e.start_date else None,
+                    "end_date": str(e.end_date) if e.end_date else None,
+                    "tech_stack": e.tech_stack,
+                    "achievements": e.achievements,
+                }
+                for e in raw_dossier.get("experiences", [])
+            ],
+            "skills": [s.name for s in raw_dossier.get("skills", [])],
+            "educations": [
+                {
+                    "institution_name": ed.institution_name,
+                    "degree": ed.degree,
+                    "field_of_study": ed.field_of_study,
+                    "start_date": str(ed.start_date) if ed.start_date else None,
+                    "end_date": str(ed.end_date) if ed.end_date else None,
+                }
+                for ed in raw_dossier.get("educations", [])
+            ],
+            "certifications": [
+                {
+                    "name": c.name,
+                    "issuing_organization": c.issuing_organization,
+                }
+                for c in raw_dossier.get("certifications", [])
+            ],
+        },
+        "applications": [
+            {
+                "id": str(a.id),
+                "company_name": a.company_name,
+                "job_title": a.job_title,
+                "status": a.status,
+                "applied_at": str(a.applied_at) if a.applied_at else None,
+            }
+            for a in apps
+        ],
+        "generated_resumes_count": len(resumes),
+    }
+
+    json_bytes = json.dumps(export_payload, indent=2, ensure_ascii=False).encode("utf-8")
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+    logger.info(
+        "web_user_data_exported",
+        user_id=str(current_user.id),
+        duration_ms=duration_ms,
+    )
+
+    return Response(
+        content=json_bytes,
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="thothcvs_meus_dados.json"'},
+    )
+
+
+@router.post("/settings/delete-account")
+async def settings_delete_account(
+    request: Request,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    user_service: UserService = Depends(get_user_service),
+) -> Response:
+    """Elimina permanentemente a conta e dados do usuário (LGPD Art. 18, VI)."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    start_time = time.perf_counter()
+    user_id_str = str(current_user.id)
+    await user_service.delete_user_account(current_user)
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+    logger.info(
+        "web_user_account_deleted",
+        user_id=user_id_str,
+        duration_ms=duration_ms,
+    )
+
+    response = Response(
+        status_code=status.HTTP_200_OK,
+        headers={"HX-Redirect": "/?msg=account_deleted"},
+    )
+    response.delete_cookie("session_token", path="/")
+    return response

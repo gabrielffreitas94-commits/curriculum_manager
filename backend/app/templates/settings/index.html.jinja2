@@ -1,0 +1,246 @@
+{% extends "base.html.jinja2" %}
+
+{% block title %}Configurações & Inteligência Artificial — ThothCVs AI{% endblock %}
+
+{% block main_class %}w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8{% endblock %}
+
+{% block content %}
+<div class="space-y-8 w-full">
+  <!-- Topo: Título da Página -->
+  <div class="pb-4 border-b border-slate-200 dark:border-slate-800 space-y-1">
+    <h1 class="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+      <span>⚙️</span> Configurações da Conta & IA
+    </h1>
+    <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+      Gerencie sua chave do Google Gemini (BYOK), preferências de idioma e controle de privacidade de dados.
+    </p>
+  </div>
+
+  <!-- 1. CARD: GOOGLE GEMINI AI (BYOK) -->
+  <div class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+      <div class="flex items-center gap-3">
+        <span class="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 text-lg">
+          🤖
+        </span>
+        <div>
+          <h2 class="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+            Google Gemini API (Bring Your Own Key)
+          </h2>
+          <p class="text-xs text-slate-500 dark:text-slate-400">
+            Utilize sua própria cota do Google AI Studio para geração ilimitada e com prioridade máxima.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        {% if user_settings and user_settings.encrypted_gemini_api_key %}
+        <span id="gemini-status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          Chave Pessoal Ativa (AES-GCM-256)
+        </span>
+        {% else %}
+        <span id="gemini-status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+          <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+          Cota Padrão Compartilhada
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Feedback Container para HTMX -->
+    <div id="gemini-feedback"></div>
+
+    <!-- Formulário de Chave do Gemini -->
+    <form 
+      id="gemini-key-form"
+      hx-post="/settings/gemini-key"
+      hx-target="#gemini-feedback"
+      hx-indicator="#gemini-save-spinner"
+      class="space-y-4">
+      
+      <div class="space-y-1.5">
+        <label for="gemini_api_key" class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+          <span>Chave de API do Google Gemini</span>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">
+            Obter chave no Google AI Studio ↗
+          </a>
+        </label>
+        
+        <div class="relative">
+          <input 
+            type="password" 
+            id="gemini_api_key" 
+            name="gemini_api_key" 
+            placeholder="AIzaSy..."
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-mono text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden pr-20">
+          <button 
+            type="button" 
+            onclick="const input = document.getElementById('gemini_api_key'); input.type = input.type === 'password' ? 'text' : 'password';"
+            class="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer">
+            👁️ Alternar
+          </button>
+        </div>
+
+        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed flex items-start gap-2">
+          <span>🔒</span>
+          <span>
+            <strong>Blindagem Criptográfica:</strong> Sua chave é cifrada com AES-GCM-256 e autenticada com Dados Associados (AEAD) vinculados estritamente ao seu identificador de usuário. Nem mesmo outros usuários ou agentes têm acesso à sua chave.
+          </span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+        <div class="flex items-center gap-2">
+          <button 
+            type="submit" 
+            class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-xs transition-colors cursor-pointer">
+            <span>Salvar Chave Pessoal</span>
+            <span id="gemini-save-spinner" class="htmx-indicator animate-spin">⟳</span>
+          </button>
+
+          <button 
+            type="button"
+            hx-post="/settings/gemini-key/test"
+            hx-include="#gemini-key-form"
+            hx-target="#gemini-feedback"
+            hx-indicator="#gemini-test-spinner"
+            class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs sm:text-sm font-medium transition-colors cursor-pointer flex items-center gap-1.5">
+            <span>⚡ Testar Conexão</span>
+            <span id="gemini-test-spinner" class="htmx-indicator animate-spin">⟳</span>
+          </button>
+        </div>
+
+        {% if user_settings and user_settings.encrypted_gemini_api_key %}
+        <button 
+          type="button"
+          hx-post="/settings/gemini-key/remove"
+          hx-target="#gemini-feedback"
+          hx-confirm="Deseja remover sua chave pessoal de API? O sistema voltará a utilizar a cota padrão compartilhada."
+          class="text-xs text-rose-600 dark:text-rose-400 hover:underline cursor-pointer">
+          Remover chave pessoal
+        </button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <!-- 2. CARD: PREFERÊNCIAS REGIONAIS & IDIOMA (i18n) -->
+  <div class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-6">
+    <div class="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+      <span class="p-2.5 rounded-xl bg-sky-50 text-sky-600 dark:bg-sky-950 dark:text-sky-400 text-lg">
+        🌐
+      </span>
+      <div>
+        <h2 class="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+          Preferências de Idioma & Síntese Regional
+        </h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400">
+          Define o idioma preferencial para navegação, datas e geração automática de currículos sob medida.
+        </p>
+      </div>
+    </div>
+
+    <!-- Feedback Container Idioma -->
+    <div id="language-feedback"></div>
+
+    <form 
+      hx-post="/settings/language" 
+      hx-target="#language-feedback" 
+      class="space-y-4">
+      <div class="max-w-xs space-y-1.5">
+        <label for="preferred_language" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+          Idioma & Dialeto Padrão
+        </label>
+        <select 
+          id="preferred_language" 
+          name="preferred_language"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden cursor-pointer">
+          <option value="pt-BR" {% if (user_settings and user_settings.preferred_language == 'pt-BR') or not user_settings %}selected{% endif %}>
+            Português (Brasil) — pt-BR
+          </option>
+          <option value="pt-PT" {% if user_settings and user_settings.preferred_language == 'pt-PT' %}selected{% endif %}>
+            Português (Portugal) — pt-PT
+          </option>
+          <option value="en-US" {% if user_settings and user_settings.preferred_language == 'en-US' %}selected{% endif %}>
+            English (United States) — en-US
+          </option>
+          <option value="en-GB" {% if user_settings and user_settings.preferred_language == 'en-GB' %}selected{% endif %}>
+            English (United Kingdom) — en-GB
+          </option>
+          <option value="es-ES" {% if user_settings and user_settings.preferred_language == 'es-ES' %}selected{% endif %}>
+            Español — es-ES
+          </option>
+        </select>
+      </div>
+
+      <div>
+        <button 
+          type="submit" 
+          class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs sm:text-sm font-semibold shadow-xs transition-colors cursor-pointer">
+          Salvar Preferência de Idioma
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- 3. CARD: PRIVACIDADE & CONFORMIDADE LGPD (DIREITOS DO TITULAR) -->
+  <div class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-6">
+    <div class="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+      <span class="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 text-lg">
+        ⚖️
+      </span>
+      <div>
+        <h2 class="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+          Privacidade & Direitos do Titular (LGPD Art. 18)
+        </h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400">
+          Exerça a portabilidade integral e o direito à eliminação definitiva dos seus dados pessoais.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Opção 1: Portabilidade de Dados -->
+      <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850/60 space-y-3 flex flex-col justify-between">
+        <div class="space-y-1">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+            📦 Exportar Meus Dados (Portabilidade)
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            Faça o download de todos os seus dados cadastrados, experiências, competências, formações e candidaturas em formato JSON padronizado.
+          </p>
+        </div>
+        <div>
+          <a 
+            href="/settings/export-data" 
+            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+            <span>📥 Baixar Dossiê Completo (.json)</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Opção 2: Eliminação Definitiva da Conta -->
+      <div class="p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 space-y-3 flex flex-col justify-between">
+        <div class="space-y-1">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">
+            ⚠️ Eliminação Definitiva da Conta
+          </h3>
+          <p class="text-xs text-rose-600/90 dark:text-rose-300/80 leading-relaxed">
+            Exclui permanentemente todo o seu dossiê profissional, candidaturas, currículos gerados e chaves criptografadas. Esta ação é irreversível.
+          </p>
+        </div>
+        <div>
+          <button 
+            type="button"
+            hx-post="/settings/delete-account"
+            hx-confirm="ATENÇÃO: Você tem certeza de que deseja eliminar DEFINITIVAMENTE sua conta e todos os dados associados? Esta ação não pode ser desfeita."
+            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer">
+            <span>🗑️ Excluir Minha Conta</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
