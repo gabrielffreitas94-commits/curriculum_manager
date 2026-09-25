@@ -1,0 +1,45 @@
+<!-- Card de Resultado da Auditoria de Fidelidade Factual Anti-Alucinação -->
+<div class="rounded-2xl p-4 border {% if audit.is_valid and not audit.hallucinations %}bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200{% else %}bg-amber-50/80 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200{% endif %} shadow-xs space-y-3 transition-all animate-in fade-in duration-300">
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-lg">
+        {% if audit.is_valid and not audit.hallucinations %}🛡️{% else %}⚠️{% endif %}
+      </span>
+      <div>
+        <h4 class="text-xs sm:text-sm font-bold">
+          {% if audit.is_valid and not audit.hallucinations %}
+            Fidelidade Factual Verificada: 100% de Veracidade
+          {% else %}
+            Auditoria Anti-Alucinação: {{ audit.hallucinations|length }} ponto(s) de atenção
+          {% endif %}
+        </h4>
+        <p class="text-[11px] opacity-80">
+          {% if audit.is_valid and not audit.hallucinations %}
+            Todas as empresas, competências e afirmações correspondem estritamente ao seu perfil cadastrado.
+          {% else %}
+            Identificamos dados que podem não estar registrados no seu dossiê primário.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    <div class="text-right">
+      <span class="px-2.5 py-1 rounded-full text-xs font-black font-mono {% if audit.trust_score >= 80 %}bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200{% else %}bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200{% endif %}">
+        Confiança: {{ "%.1f"|format(audit.trust_score) }}%
+      </span>
+    </div>
+  </div>
+
+  {% if audit.hallucinations %}
+  <div class="pt-2 border-t border-amber-200/80 dark:border-amber-800/80 space-y-1.5">
+    <span class="text-[10px] font-bold uppercase tracking-wider">Inconsistências identificadas:</span>
+    <ul class="space-y-1 text-xs list-disc list-inside">
+      {% for h in audit.hallucinations %}
+      <li class="leading-relaxed">
+        <strong>{{ h.field }}:</strong> {{ h.description }} <span class="text-[10px] opacity-75 font-mono">({{ h.severity }})</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>

@@ -21,6 +21,7 @@ from app.ports.oauth_port import OAuthPort
 
 if TYPE_CHECKING:
     from app.ports.resume_parser_port import ResumeParserPort
+    from app.services.application_service import ApplicationService
     from app.services.auth_service import AuthService
     from app.services.copilot_service import CopilotService
     from app.services.document_service import DocumentService
@@ -289,3 +290,19 @@ async def get_resume_service(
     from app.services.resume_service import ResumeService
 
     return ResumeService(db=db)
+
+
+async def get_application_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> "ApplicationService":
+    """Injeta uma instância ativa de ApplicationService com a sessão do banco.
+
+    Args:
+        db: Sessão ativa do banco de dados relacional.
+
+    Returns:
+        ApplicationService pronto para gestão de candidaturas ATS.
+    """
+    from app.services.application_service import ApplicationService
+
+    return ApplicationService(db=db)

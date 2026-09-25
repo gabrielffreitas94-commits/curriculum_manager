@@ -1,0 +1,56 @@
+<div id="app-notes-section" class="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        Anotações do Processo Seletivo
+    </h4>
+
+    <!-- Formulário de Adicionar Nota -->
+    <form 
+        hx-post="/applications/{{ app.id }}/notes"
+        hx-target="#app-notes-section"
+        hx-swap="outerHTML"
+        class="space-y-2">
+        <div class="flex items-center gap-2">
+            <select 
+                name="note_type" 
+                class="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 cursor-pointer">
+                <option value="general">Geral</option>
+                <option value="screening">Triagem / HR</option>
+                <option value="technical">Entrevista Técnica</option>
+                <option value="behavioral">Comportamental</option>
+                <option value="offer">Proposta / Negociação</option>
+            </select>
+            <input 
+                type="text" 
+                name="content" 
+                required 
+                placeholder="Escreva uma anotação rápida sobre a entrevista ou feedback..."
+                class="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+            <button 
+                type="submit" 
+                class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer transition-colors">
+                Salvar
+            </button>
+        </div>
+    </form>
+
+    <!-- Feed de Notas -->
+    <div class="space-y-2 max-h-48 overflow-y-auto">
+        {% for n in notes %}
+        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 space-y-1">
+            <div class="flex items-center justify-between text-[10px] text-slate-400">
+                <span class="font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                    {{ n.note_type }}
+                </span>
+                <span class="font-mono">
+                    {{ n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '' }}
+                </span>
+            </div>
+            <p class="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
+                {{ n.content }}
+            </p>
+        </div>
+        {% else %}
+        <p class="text-xs text-slate-400 italic">Nenhuma anotação registrada ainda.</p>
+        {% endfor %}
+    </div>
+</div>

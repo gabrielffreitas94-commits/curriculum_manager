@@ -1,0 +1,205 @@
+<!-- Modal Acessível de Detalhes da Candidatura ATS -->
+<div 
+    id="application-detail-modal-backdrop" 
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="app-detail-title"
+    tabindex="-1">
+    
+    <div class="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        
+        <!-- Cabeçalho do Modal -->
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div class="space-y-0.5">
+                <div class="flex items-center gap-2">
+                    <h3 id="app-detail-title" class="text-base font-bold text-slate-900 dark:text-slate-100">
+                        {{ app.company_name }}
+                    </h3>
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                        {{ app.status }}
+                    </span>
+                </div>
+                <p class="text-xs text-slate-500 dark:text-slate-400">
+                    {{ app.job_title }}
+                </p>
+            </div>
+            
+            <button 
+                type="button" 
+                onclick="closeModal()" 
+                aria-label="Fechar modal de detalhes"
+                class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Conteúdo do Modal (Scrollável) -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-6 text-xs sm:text-sm">
+            
+            <!-- Alerta de Follow-up (> 7 dias) -->
+            {% if app.needs_follow_up %}
+            <div class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/80 text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-2">
+                <span class="text-base">⚠️</span>
+                <div>
+                    <div class="font-bold">Atenção ao Follow-up</div>
+                    <div class="text-[11px] font-normal text-amber-700 dark:text-amber-400">
+                        Não houve novas interações nos últimos 7 dias. Envie um e-mail educado de acompanhamento ao recrutador.
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Metadados da Oportunidade -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800">
+                <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Modelo</span>
+                    <span class="font-semibold text-slate-800 dark:text-slate-200 capitalize">{{ app.work_model or 'Remoto' }}</span>
+                </div>
+                <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Salário</span>
+                    <span class="font-semibold text-emerald-600 dark:text-emerald-400">{{ app.salary_range or 'Não informado' }}</span>
+                </div>
+                <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Local</span>
+                    <span class="font-semibold text-slate-800 dark:text-slate-200">{{ app.location or 'Global' }}</span>
+                </div>
+                <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Link da Vaga</span>
+                    {% if app.job_url %}
+                        <a href="{{ app.job_url }}" target="_blank" rel="noopener noreferrer" class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">Acessar ↗</a>
+                    {% else %}
+                        <span class="text-slate-400">Sem link</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Descrição da Vaga -->
+            {% if app.job_description %}
+            <div class="space-y-1.5">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Descrição do Cargo
+                </h4>
+                <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 max-h-36 overflow-y-auto whitespace-pre-line leading-relaxed">
+                    {{ app.job_description }}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Currículos Vinculados -->
+            <div class="space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Currículos Sob Medida Vinculados
+                    </h4>
+                    <a href="/resumes/new" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                        + Gerar Nova Versão
+                    </a>
+                </div>
+
+                <div class="space-y-2">
+                    {% for r in resumes %}
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                        <div class="flex items-center gap-3">
+                            <span class="px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-mono text-xs font-bold border border-indigo-200 dark:border-indigo-800">
+                                v{{ r.version_number }}
+                            </span>
+                            <span class="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                                Match de {{ "%.1f"|format(r.match_percentage) }}%
+                            </span>
+                            <span class="text-[10px] text-slate-400 font-mono">
+                                {{ r.created_at.strftime('%d/%m/%Y %H:%M') if r.created_at else '' }}
+                            </span>
+                        </div>
+                        <a 
+                            href="/resumes/{{ r.id }}/preview" 
+                            class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors">
+                            Abrir no Split-View ↗
+                        </a>
+                    </div>
+                    {% else %}
+                    <div class="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center text-xs text-slate-400">
+                        Nenhum currículo gerado ainda para esta candidatura.
+                        <div class="mt-2">
+                            <a href="/resumes/new" class="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
+                                <span>Criar currículo sob medida</span> ↗
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Seção de Anotações Cronológicas -->
+            <div id="app-notes-section" class="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Anotações do Processo Seletivo
+                </h4>
+
+                <!-- Formulário de Adicionar Nota -->
+                <form 
+                    hx-post="/applications/{{ app.id }}/notes"
+                    hx-target="#app-notes-section"
+                    hx-swap="outerHTML"
+                    class="space-y-2">
+                    <div class="flex items-center gap-2">
+                        <select 
+                            name="note_type" 
+                            class="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 cursor-pointer">
+                            <option value="general">Geral</option>
+                            <option value="screening">Triagem / HR</option>
+                            <option value="technical">Entrevista Técnica</option>
+                            <option value="behavioral">Comportamental</option>
+                            <option value="offer">Proposta / Negociação</option>
+                        </select>
+                        <input 
+                            type="text" 
+                            name="content" 
+                            required 
+                            placeholder="Escreva uma anotação rápida sobre a entrevista ou feedback..."
+                            class="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+                        <button 
+                            type="submit" 
+                            class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer transition-colors">
+                            Salvar
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Feed de Notas -->
+                <div class="space-y-2 max-h-48 overflow-y-auto">
+                    {% for n in app.notes %}
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 space-y-1">
+                        <div class="flex items-center justify-between text-[10px] text-slate-400">
+                            <span class="font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                                {{ n.note_type }}
+                            </span>
+                            <span class="font-mono">
+                                {{ n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '' }}
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
+                            {{ n.content }}
+                        </p>
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-slate-400 italic">Nenhuma anotação registrada ainda.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer do Modal -->
+        <div class="px-6 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end">
+            <button 
+                type="button" 
+                onclick="closeModal()" 
+                class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition-colors cursor-pointer">
+                Fechar
+            </button>
+        </div>
+    </div>
+</div>

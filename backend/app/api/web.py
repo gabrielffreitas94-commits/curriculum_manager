@@ -2,7 +2,11 @@ import hmac
 import html
 import json
 import secrets
+import time
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -17,11 +21,14 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import (
     create_copilot_service,
+    get_application_service,
     get_auth_service,
+    get_document_service,
     get_job_ingest_service,
     get_profile_service,
     get_prompt_skill_service,
@@ -30,18 +37,26 @@ from app.api.v1.deps import (
     google_oauth_adapter,
     resolve_gemini_api_key,
 )
+from app.api.v1.schemas.application import (
+    ApplicationCreate,
+    ApplicationNoteCreate,
+    ApplicationUpdate,
+)
 from app.api.v1.schemas.resume import ResumeGenerateRequest
 from app.core.config import settings
 from app.core.database import get_db_session
 from app.core.file_security import FileSecurityError, validate_resume_file
+from app.core.grounding_audit import GroundingAuditEngine
 from app.core.logging import get_logger
 from app.core.telemetry import set_user_id
 from app.core.url_scraper import URLScraperError
-from app.domain.models import User
+from app.domain.models import Application, GeneratedResume, User
 from app.ports.ai_port import ChatMessage
 from app.ports.oauth_port import OAuthError
 from app.ports.resume_parser_port import ParsedProfileDTO, ResumeParserError
+from app.services.application_service import ApplicationService
 from app.services.auth_service import AuthService
+from app.services.document_service import DocumentService
 from app.services.job_ingest_service import JobIngestService
 from app.services.profile_service import ProfileService
 from app.services.prompt_skill_service import PromptSkillService
@@ -602,4 +617,550 @@ async def generate_custom_resume(
     )
     return RedirectResponse(
         url=f"/resumes/{result.resume_id}/preview", status_code=status.HTTP_302_FOUND
+    )
+
+
+def _extract_updated_resume_content(
+    base_content: dict[str, Any],
+    form_data: dict[str, Any],
+) -> dict[str, Any]:
+    """Extrai e mescla campos editados do formulário HTML com o JSON estruturado base."""
+    content = dict(base_content)
+    header = dict(content.get("header") or {})
+    if "target_title" in form_data and form_data["target_title"]:
+        header["target_title"] = str(form_data["target_title"]).strip()
+    content["header"] = header
+
+    if "professional_summary" in form_data and form_data["professional_summary"] is not None:
+        content["professional_summary"] = str(form_data["professional_summary"]).strip()
+
+    if "skills_list" in form_data and form_data["skills_list"] is not None:
+        raw_skills = [s.strip() for s in str(form_data["skills_list"]).split(",") if s.strip()]
+        content["skills_highlighted"] = raw_skills
+        content["skills"] = raw_skills
+
+    exp_indices: set[int] = set()
+    for k in form_data:
+        if k.startswith("exp_") and k.endswith("_title"):
+            try:
+                idx = int(k.split("_")[1])
+                exp_indices.add(idx)
+            except (IndexError, ValueError):
+                pass
+
+    if exp_indices:
+        existing_exps = list(
+            content.get("selected_experiences") or content.get("experiences") or []
+        )
+        updated_exps: list[dict[str, Any]] = []
+        for idx in sorted(exp_indices):
+            title = str(form_data.get(f"exp_{idx}_title", ""))
+            company = str(form_data.get(f"exp_{idx}_company", ""))
+            period = str(form_data.get(f"exp_{idx}_period", ""))
+            bullets_raw = str(form_data.get(f"exp_{idx}_bullets", ""))
+            bullet_points = [b.strip() for b in bullets_raw.splitlines() if b.strip()]
+
+            base_exp = (
+                existing_exps[idx]
+                if idx < len(existing_exps) and isinstance(existing_exps[idx], dict)
+                else {}
+            )
+            start_date = base_exp.get("start_date", "")
+            end_date = base_exp.get("end_date", "")
+            if period and "—" in period:
+                parts = [p.strip() for p in period.split("—")]
+                start_date = parts[0]
+                end_date = parts[1] if len(parts) > 1 else ""
+            elif period and "-" in period:
+                parts = [p.strip() for p in period.split("-")]
+                start_date = parts[0]
+                end_date = parts[1] if len(parts) > 1 else ""
+            elif period:
+                start_date = period.strip()
+                end_date = ""
+
+            updated_exps.append(
+                {
+                    "position_title": title,
+                    "company_name": company,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "tech_stack": base_exp.get("tech_stack", []),
+                    "bullet_points": bullet_points,
+                    "achievements": bullet_points,
+                }
+            )
+        content["selected_experiences"] = updated_exps
+        content["experiences"] = updated_exps
+
+    return content
+
+
+@router.get("/resumes/{resume_id}/preview", response_class=HTMLResponse)
+async def resume_preview_page(
+    request: Request,
+    resume_id: uuid.UUID,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Carrega o editor Live Split-View com pré-visualização A4 sincronizada."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    stmt = select(GeneratedResume).where(
+        GeneratedResume.id == resume_id,
+        GeneratedResume.user_id == current_user.id,
+    )
+    result = await db.execute(stmt)
+    resume = result.scalar_one_or_none()
+
+    if not resume:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Currículo não encontrado.",
+        )
+
+    stmt_app = select(Application).where(Application.id == resume.application_id)
+    res_app = await db.execute(stmt_app)
+    application = res_app.scalar_one_or_none()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="resumes/preview.html.jinja2",
+        context={
+            "request": request,
+            "resume": resume,
+            "application": application,
+            "content": resume.structured_content,
+            "current_user": current_user,
+            "active_tab": "resumes",
+        },
+    )
+
+
+@router.post("/resumes/{resume_id}/preview-render", response_class=HTMLResponse)
+async def resume_preview_render(
+    request: Request,
+    resume_id: uuid.UUID,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Renderiza a folha A4 dinamicamente com base nas alterações do editor."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    stmt = select(GeneratedResume).where(
+        GeneratedResume.id == resume_id,
+        GeneratedResume.user_id == current_user.id,
+    )
+    result = await db.execute(stmt)
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Currículo não encontrado."
+        )
+
+    form_data = dict(await request.form())
+    updated_content = _extract_updated_resume_content(resume.structured_content, form_data)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="resumes/partials/preview_paper.html.jinja2",
+        context={
+            "request": request,
+            "content": updated_content,
+            "current_user": current_user,
+        },
+    )
+
+
+@router.post("/resumes/{resume_id}/save", response_class=HTMLResponse)
+async def resume_save_content(
+    request: Request,
+    resume_id: uuid.UUID,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Persiste as edições manuais realizadas no currículo estruturado."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    stmt = select(GeneratedResume).where(
+        GeneratedResume.id == resume_id,
+        GeneratedResume.user_id == current_user.id,
+    )
+    result = await db.execute(stmt)
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Currículo não encontrado."
+        )
+
+    form_data = dict(await request.form())
+    updated_content = _extract_updated_resume_content(resume.structured_content, form_data)
+    resume.structured_content = updated_content
+    resume.updated_at = datetime.now(UTC)
+    await db.commit()
+
+    logger.info(
+        "web_resume_saved",
+        resume_id=str(resume.id),
+        user_id=str(current_user.id),
+    )
+
+    toast_html = (
+        '<div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 '
+        "border border-emerald-200 dark:border-emerald-800 text-xs font-semibold "
+        "text-emerald-800 dark:text-emerald-300 flex items-center justify-between "
+        'animate-in fade-in">\n'
+        "  <span>✅ Alterações do currículo salvas com sucesso!</span>\n"
+        '  <button type="button" onclick="this.parentElement.remove()" '
+        'class="text-emerald-600 dark:text-emerald-400 hover:opacity-80 cursor-pointer">'
+        "✕</button>\n"
+        "</div>"
+    )
+    return HTMLResponse(content=toast_html)
+
+
+@router.post("/resumes/{resume_id}/verify-grounding", response_class=HTMLResponse)
+async def resume_verify_grounding(
+    request: Request,
+    resume_id: uuid.UUID,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Audita a fidelidade factual do currículo editado contra o dossiê mestre do usuário."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    stmt = select(GeneratedResume).where(
+        GeneratedResume.id == resume_id,
+        GeneratedResume.user_id == current_user.id,
+    )
+    result = await db.execute(stmt)
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Currículo não encontrado."
+        )
+
+    start_time = time.perf_counter()
+    form_data = dict(await request.form())
+    updated_content = _extract_updated_resume_content(resume.structured_content, form_data)
+
+    profile_service = ProfileService(db)
+    raw_dossier = await profile_service.get_full_dossier(current_user.id)
+    user_dossier: dict[str, Any] = {
+        "companies": [e.company_name for e in raw_dossier.get("experiences", [])],
+        "skills": [s.name for s in raw_dossier.get("skills", [])],
+        "degrees": [e.degree for e in raw_dossier.get("educations", [])],
+    }
+
+    audit_engine = GroundingAuditEngine()
+    audit = audit_engine.audit(updated_content, user_dossier)
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+    logger.info(
+        "web_resume_grounding_audited",
+        resume_id=str(resume.id),
+        user_id=str(current_user.id),
+        trust_score=audit.trust_score,
+        hallucinations_count=len(audit.hallucinations),
+        duration_ms=duration_ms,
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="resumes/partials/grounding_audit_card.html.jinja2",
+        context={"request": request, "audit": audit},
+    )
+
+
+@router.get("/resumes/{resume_id}/export/pdf")
+async def resume_export_pdf(
+    resume_id: uuid.UUID,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    document_service: DocumentService = Depends(get_document_service),
+) -> Response:
+    """Exporta o currículo gerado no formato binário PDF de alta fidelidade ATS."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    start_time = time.perf_counter()
+    pdf_bytes, filename = await document_service.export_pdf(resume_id, current_user)
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+    logger.info(
+        "web_resume_pdf_exported",
+        resume_id=str(resume_id),
+        user_id=str(current_user.id),
+        duration_ms=duration_ms,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/resumes/{resume_id}/export/docx")
+async def resume_export_docx(
+    resume_id: uuid.UUID,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    document_service: DocumentService = Depends(get_document_service),
+) -> Response:
+    """Exporta o currículo gerado no formato binário DOCX editável."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    start_time = time.perf_counter()
+    docx_bytes, filename = await document_service.export_docx(resume_id, current_user)
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+    logger.info(
+        "web_resume_docx_exported",
+        resume_id=str(resume_id),
+        user_id=str(current_user.id),
+        duration_ms=duration_ms,
+    )
+
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/applications", response_class=HTMLResponse)
+async def applications_page(
+    request: Request,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    app_service: ApplicationService = Depends(get_application_service),
+) -> Response:
+    """Exibe o funil ATS pessoal completo com métricas e visualização Kanban."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    apps = await app_service.list_applications(current_user)
+    applications_by_status = {
+        col: [a for a in apps if a.status == col]
+        for col in ["applied", "screen", "tech_interview", "final_interview", "offer", "rejected"]
+    }
+    analytics = await app_service.get_analytics_metrics(current_user)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="applications/index.html.jinja2",
+        context={
+            "request": request,
+            "applications_by_status": applications_by_status,
+            "analytics": analytics,
+            "current_user": current_user,
+            "active_tab": "applications",
+        },
+    )
+
+
+@router.get("/applications/modal/create", response_class=HTMLResponse)
+async def application_create_modal(
+    request: Request,
+    current_user: User | None = Depends(get_authenticated_web_user),
+) -> Response:
+    """Renderiza o modal acessível para registro de nova oportunidade."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="applications/partials/create_modal.html.jinja2",
+        context={"request": request},
+    )
+
+
+@router.post("/applications/create")
+async def application_create(
+    request: Request,
+    company_name: str = Form(...),
+    job_title: str = Form(...),
+    status_field: str = Form("applied", alias="status"),
+    work_model: str = Form("remote"),
+    salary_range: str | None = Form(None),
+    location: str | None = Form(None),
+    job_url: str | None = Form(None),
+    job_description: str = Form(""),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    app_service: ApplicationService = Depends(get_application_service),
+) -> Response:
+    """Cria uma nova candidatura no funil ATS e atualiza a visualização."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    payload = ApplicationCreate(
+        company_name=company_name,
+        job_title=job_title,
+        status=status_field,
+        work_model=work_model,
+        salary_range=salary_range or None,
+        location=location or None,
+        job_url=job_url or None,
+        job_description=job_description,
+    )
+    created = await app_service.create_application(current_user, payload)
+
+    logger.info(
+        "web_application_created",
+        application_id=str(created.id),
+        user_id=str(current_user.id),
+        company=company_name,
+    )
+
+    if request.headers.get("HX-Request"):
+        return Response(headers={"HX-Redirect": "/applications"})
+    return RedirectResponse(url="/applications", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/applications/{application_id}/status", response_class=HTMLResponse)
+async def application_status_update(
+    request: Request,
+    application_id: uuid.UUID,
+    new_status: str = Form(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    app_service: ApplicationService = Depends(get_application_service),
+) -> Response:
+    """Avança o status da vaga no funil e retorna o tabuleiro Kanban atualizado."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    await app_service.update_application(
+        user=current_user,
+        app_id=application_id,
+        payload=ApplicationUpdate(status=new_status),
+    )
+
+    logger.info(
+        "web_application_status_updated",
+        application_id=str(application_id),
+        user_id=str(current_user.id),
+        new_status=new_status,
+    )
+
+    apps = await app_service.list_applications(current_user)
+    applications_by_status = {
+        col: [a for a in apps if a.status == col]
+        for col in ["applied", "screen", "tech_interview", "final_interview", "offer", "rejected"]
+    }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="applications/partials/kanban_board.html.jinja2",
+        context={
+            "request": request,
+            "applications_by_status": applications_by_status,
+        },
+    )
+
+
+@router.get("/applications/{application_id}/detail", response_class=HTMLResponse)
+async def application_detail_modal(
+    request: Request,
+    application_id: uuid.UUID,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    app_service: ApplicationService = Depends(get_application_service),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Renderiza modal com histórico, notas e currículos vinculados à oportunidade."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    app_detail = await app_service.get_application_detail(current_user, application_id)
+    stmt_resumes = (
+        select(GeneratedResume)
+        .where(
+            GeneratedResume.application_id == application_id,
+            GeneratedResume.user_id == current_user.id,
+        )
+        .order_by(GeneratedResume.version_number.desc())
+    )
+    res_resumes = await db.execute(stmt_resumes)
+    resumes = res_resumes.scalars().all()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="applications/partials/detail_modal.html.jinja2",
+        context={
+            "request": request,
+            "app": app_detail,
+            "resumes": resumes,
+        },
+    )
+
+
+@router.post("/applications/{application_id}/notes", response_class=HTMLResponse)
+async def application_add_note(
+    request: Request,
+    application_id: uuid.UUID,
+    content: str = Form(...),
+    note_type: str = Form("general"),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    app_service: ApplicationService = Depends(get_application_service),
+) -> Response:
+    """Registra uma nova anotação na vaga e retorna o feed de notas atualizado."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    await app_service.add_note(
+        user=current_user,
+        app_id=application_id,
+        payload=ApplicationNoteCreate(content=content, note_type=note_type),
+    )
+
+    logger.info(
+        "web_application_note_created",
+        application_id=str(application_id),
+        user_id=str(current_user.id),
+        note_type=note_type,
+    )
+
+    app_detail = await app_service.get_application_detail(current_user, application_id)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="applications/partials/notes_section.html.jinja2",
+        context={
+            "request": request,
+            "app": app_detail,
+            "notes": app_detail.notes,
+        },
     )

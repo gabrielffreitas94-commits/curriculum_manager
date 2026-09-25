@@ -1,0 +1,96 @@
+{% extends "base.html.jinja2" %}
+
+{% block title %}Funil ATS & Gestão de Candidaturas — ThothCVs AI{% endblock %}
+
+{% block main_class %}w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6{% endblock %}
+
+{% block content %}
+<div class="space-y-6 w-full">
+  <!-- Topo: Título da Página e Botão Nova Candidatura -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+    <div>
+      <h1 class="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+        <span>📊</span> Funil ATS Pessoal
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+        Controle integral de processos seletivos, entrevistas e lembretes de follow-up contra estagnação.
+      </p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button 
+        type="button"
+        hx-get="/applications/modal/create"
+        hx-target="#modal-container"
+        class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-xs transition-colors cursor-pointer">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+        <span>+ Nova Candidatura</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Cards de Métricas e Conversão do Funil -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- Card 1: Total -->
+    <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center gap-3">
+      <div class="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+      </div>
+      <div>
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Total de Vagas</span>
+        <span class="text-xl font-black text-slate-900 dark:text-slate-100">{{ analytics.total_applications }}</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Taxa de Entrevistas -->
+    <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center gap-3">
+      <div class="p-3 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <div>
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Conversão Entrevista</span>
+        <span class="text-xl font-black text-slate-900 dark:text-slate-100">{{ "%.1f"|format(analytics.interview_conversion_rate) }}%</span>
+      </div>
+    </div>
+
+    <!-- Card 3: Match Médio -->
+    <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center gap-3">
+      <div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <div>
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Match Médio IA</span>
+        <span class="text-xl font-black text-slate-900 dark:text-slate-100">{{ "%.1f"|format(analytics.average_match_score) }}%</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Alertas de Follow-up (> 7 dias) -->
+    <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center gap-3">
+      <div class="p-3 rounded-xl {% if analytics.stale_applications_count > 0 %}bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 animate-pulse{% else %}bg-slate-50 dark:bg-slate-800 text-slate-400{% endif %}">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <div>
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Exigem Follow-up</span>
+        <span class="text-xl font-black {% if analytics.stale_applications_count > 0 %}text-amber-600 dark:text-amber-400{% else %}text-slate-900 dark:text-slate-100{% endif %}">
+          {{ analytics.stale_applications_count }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quadro Kanban de Candidaturas -->
+  <div class="pt-2">
+    {% include "applications/partials/kanban_board.html.jinja2" %}
+  </div>
+</div>
+{% endblock %}

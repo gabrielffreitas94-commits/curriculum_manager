@@ -1,0 +1,184 @@
+<!-- Modal Acessível para Criação de Nova Candidatura ATS -->
+<div 
+    id="create-application-modal-backdrop" 
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="create-app-title"
+    tabindex="-1">
+    
+    <div class="relative w-full max-w-xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        
+        <!-- Cabeçalho do Modal -->
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <span class="p-2 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                </span>
+                <div>
+                    <h3 id="create-app-title" class="text-base font-bold text-slate-900 dark:text-slate-100">
+                        Nova Candidatura ATS
+                    </h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Acompanhe oportunidades, etapas seletivas e follow-ups em tempo hábil.
+                    </p>
+                </div>
+            </div>
+            
+            <button 
+                type="button" 
+                onclick="closeModal()" 
+                aria-label="Fechar modal de nova candidatura"
+                class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Formulário de Criação -->
+        <form 
+            id="create-app-form"
+            hx-post="/applications/create"
+            hx-target="#main-content"
+            hx-swap="outerHTML"
+            class="flex-1 overflow-y-auto p-6 space-y-4 text-xs sm:text-sm">
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Empresa -->
+                <div class="space-y-1">
+                    <label for="company_name" class="block font-semibold text-slate-700 dark:text-slate-300">
+                        Empresa <span class="text-rose-500">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="company_name" 
+                        name="company_name" 
+                        required 
+                        placeholder="Ex: Google, Nubank..."
+                        class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+                </div>
+
+                <!-- Cargo Pretendido -->
+                <div class="space-y-1">
+                    <label for="job_title" class="block font-semibold text-slate-700 dark:text-slate-300">
+                        Cargo / Título <span class="text-rose-500">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="job_title" 
+                        name="job_title" 
+                        required 
+                        placeholder="Ex: Senior Backend Engineer"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <!-- Etapa Inicial / Status -->
+                <div class="space-y-1">
+                    <label for="status" class="block font-semibold text-slate-700 dark:text-slate-300">
+                        Etapa Inicial
+                    </label>
+                    <select 
+                        id="status" 
+                        name="status"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden cursor-pointer">
+                        <option value="applied" selected>Candidatou-se</option>
+                        <option value="screen">Triagem / HR</option>
+                        <option value="tech_interview">Entrevista Técnica</option>
+                        <option value="final_interview">Etapa Final</option>
+                        <option value="offer">Proposta 🎉</option>
+                        <option value="rejected">Não Selecionado</option>
+                    </select>
+                </div>
+
+                <!-- Modelo de Trabalho -->
+                <div class="space-y-1">
+                    <label for="work_model" class="block font-semibold text-slate-700 dark:text-slate-300">
+                        Modelo
+                    </label>
+                    <select 
+                        id="work_model" 
+                        name="work_model"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden cursor-pointer">
+                        <option value="remote" selected>Remoto</option>
+                        <option value="hybrid">Híbrido</option>
+                        <option value="on_site">Presencial</option>
+                    </select>
+                </div>
+
+                <!-- Faixa Salarial / Target -->
+                <div class="space-y-1">
+                    <label for="salary_range" class="block font-semibold text-slate-700 dark:text-slate-300">
+                        Faixa Salarial
+                    </label>
+                    <input 
+                        type="text" 
+                        id="salary_range" 
+                        name="salary_range" 
+                        placeholder="Ex: R$ 18k - 22k"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- Localização -->
+                <div class="space-y-1">
+                    <label for="location" class="block font-semibold text-slate-700 dark:text-slate-300">
+                        Localização / Praça
+                    </label>
+                    <input 
+                        type="text" 
+                        id="location" 
+                        name="location" 
+                        placeholder="Ex: São Paulo, Brasil / Global"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+                </div>
+
+                <!-- URL da Vaga -->
+                <div class="space-y-1">
+                    <label for="job_url" class="block font-semibold text-slate-700 dark:text-slate-300">
+                        Link da Vaga / Anúncio
+                    </label>
+                    <input 
+                        type="url" 
+                        id="job_url" 
+                        name="job_url" 
+                        placeholder="https://linkedin.com/jobs/view/..."
+                        class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+                </div>
+            </div>
+
+            <!-- Descrição da Vaga -->
+            <div class="space-y-1">
+                <label for="job_description" class="block font-semibold text-slate-700 dark:text-slate-300">
+                    Descrição da Vaga ou Requisitos Principais
+                </label>
+                <textarea 
+                    id="job_description" 
+                    name="job_description" 
+                    rows="3" 
+                    placeholder="Cole aqui os requisitos ou o texto do anúncio da vaga..."
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden leading-relaxed"></textarea>
+            </div>
+
+            <!-- Botões de Ação do Footer -->
+            <div class="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+                <button 
+                    type="button" 
+                    onclick="closeModal()" 
+                    class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition-colors cursor-pointer">
+                    Cancelar
+                </button>
+                <button 
+                    type="submit" 
+                    class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5">
+                    <span>Adicionar Oportunidade</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

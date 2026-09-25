@@ -1,0 +1,228 @@
+{% extends "base.html.jinja2" %}
+
+{% block title %}Editor e Visualização ao Vivo — ThothCVs AI{% endblock %}
+
+{% block main_class %}w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Topo: Navegação e Barra de Ações Rápidas -->
+  <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+    <div class="flex items-center gap-3">
+      <a href="/resumes/new" class="p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400" title="Voltar ao Gerador">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+      </a>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            Currículo Sob Medida
+          </h1>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-mono">
+            v{{ resume.version_number }}
+          </span>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if resume.match_percentage >= 75 %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800{% else %}bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800{% endif %}">
+            🎯 {{ "%.1f"|format(resume.match_percentage) }}% Match
+          </span>
+        </div>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          Vaga: <strong>{{ application.job_title if application else 'Engenheiro de Software' }}</strong> na <strong>{{ application.company_name if application else 'Oportunidade' }}</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- Botões de Ação: Auditoria, Download e Salvar -->
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- Botão de Auditoria Grounding -->
+      <button 
+        type="button"
+        hx-post="/resumes/{{ resume.id }}/verify-grounding"
+        hx-include="#resume-editor-form"
+        hx-target="#grounding-audit-container"
+        hx-indicator="#grounding-spinner"
+        class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer">
+        <span>🛡️ Auditar Fidelidade Factual</span>
+        <span id="grounding-spinner" class="htmx-indicator animate-spin">⟳</span>
+      </button>
+
+      <!-- Botão Salvar Edições -->
+      <button 
+        type="button"
+        onclick="htmx.trigger('#resume-editor-form', 'saveResume')"
+        class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer">
+        <span>💾 Salvar</span>
+      </button>
+
+      <!-- Download PDF -->
+      <a 
+        href="/resumes/{{ resume.id }}/export/pdf" 
+        target="_blank"
+        class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors">
+        <svg class="w-3.5 h-3.5 text-rose-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span>PDF</span>
+      </a>
+
+      <!-- Download DOCX -->
+      <a 
+        href="/resumes/{{ resume.id }}/export/docx" 
+        target="_blank"
+        class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors">
+        <svg class="w-3.5 h-3.5 text-sky-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span>DOCX</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Alertas de Feedback / Notificações -->
+  <div id="save-feedback"></div>
+  <div id="grounding-audit-container"></div>
+
+  <!-- Layout Live Split View: Editor (Esquerda) e Documento A4 (Direita) -->
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+    
+    <!-- COLUNA DA ESQUERDA: Formulário Estruturado do Currículo (5 colunas) -->
+    <div class="lg:col-span-5 space-y-6">
+      <form 
+        id="resume-editor-form"
+        hx-post="/resumes/{{ resume.id }}/preview-render"
+        hx-trigger="input delay:350ms, change"
+        hx-target="#resume-paper-container"
+        hx-indicator="#preview-spinner"
+        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-5">
+        
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <h2 class="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <span>✏️</span> Editor de Campos do Currículo
+          </h2>
+          <span class="text-[11px] text-slate-400">Edição em tempo real</span>
+        </div>
+
+        <!-- 1. TÍTULO PRETENDIDO -->
+        <div class="space-y-1">
+          <label for="input-target-title" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            Título Profissional Alvo
+          </label>
+          <input 
+            type="text" 
+            id="input-target-title"
+            name="target_title" 
+            value="{{ content.header.target_title or '' }}" 
+            class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+        </div>
+
+        <!-- 2. RESUMO PROFISSIONAL -->
+        <div class="space-y-1">
+          <label for="input-summary" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            Resumo Profissional Narrativo
+          </label>
+          <textarea 
+            id="input-summary"
+            name="professional_summary" 
+            rows="5"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden leading-relaxed">{{ content.professional_summary or '' }}</textarea>
+          <span class="text-[10px] text-slate-400">Enfatize conquistas quantificáveis conforme a metodologia escolhida.</span>
+        </div>
+
+        <!-- 3. EXPERIÊNCIAS PROFISSIONAIS -->
+        <div class="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+              Experiências Selecionadas
+            </span>
+          </div>
+
+          {% for exp in (content.selected_experiences or content.experiences) %}
+          {% set exp_idx = loop.index0 %}
+          <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Cargo</label>
+                <input 
+                  type="text" 
+                  name="exp_{{ exp_idx }}_title" 
+                  value="{{ exp.position_title }}" 
+                  class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+              </div>
+              <div>
+                <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Empresa</label>
+                <input 
+                  type="text" 
+                  name="exp_{{ exp_idx }}_company" 
+                  value="{{ exp.company_name }}" 
+                  class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+              </div>
+            </div>
+
+            <div>
+              <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Período</label>
+              <input 
+                type="text" 
+                name="exp_{{ exp_idx }}_period" 
+                value="{{ exp.start_date }}{% if exp.end_date %} — {{ exp.end_date }}{% endif %}" 
+                class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono text-slate-900 dark:text-slate-100">
+            </div>
+
+            <div>
+              <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Bullet Points (um por linha)</label>
+              <textarea 
+                name="exp_{{ exp_idx }}_bullets" 
+                rows="4" 
+                class="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono leading-normal">{% for b in (exp.bullet_points or exp.achievements) %}{{ b }}
+{% endfor %}</textarea>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- 4. COMPETÊNCIAS TÉCNICAS -->
+        <div class="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <label for="input-skills" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            Competências Técnicas em Destaque (separadas por vírgula)
+          </label>
+          <input 
+            type="text" 
+            id="input-skills"
+            name="skills_list" 
+            value="{% for s in (content.skills_highlighted or content.skills) %}{{ s.name if s.name is defined else s }}{% if not loop.last %}, {% endif %}{% endfor %}" 
+            class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-slate-100">
+        </div>
+      </form>
+    </div>
+
+    <!-- COLUNA DA DIREITA: Folha A4 com Visualização ao Vivo (7 colunas) -->
+    <div class="lg:col-span-7 space-y-3 sticky top-20">
+      <div class="flex items-center justify-between px-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
+        <span class="flex items-center gap-1.5">
+          <span>📄</span> Visualização ATS Real (Diagramação Dinâmica)
+        </span>
+        <span id="preview-spinner" class="htmx-indicator text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+          <span class="animate-spin text-sm">⟳</span> Atualizando preview...
+        </span>
+      </div>
+
+      <!-- Container Dinâmico da Folha A4 -->
+      <div id="resume-paper-container">
+        {% include "resumes/partials/preview_paper.html.jinja2" %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  document.body.addEventListener('saveResume', function() {
+    var form = document.getElementById('resume-editor-form');
+    if (!form) return;
+    htmx.ajax('POST', '/resumes/{{ resume.id }}/save', {
+      source: form,
+      target: '#save-feedback',
+      swap: 'innerHTML'
+    });
+  });
+</script>
+{% endblock %}
