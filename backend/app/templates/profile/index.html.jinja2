@@ -1,0 +1,274 @@
+{% extends "base.html.jinja2" %}
+
+{% block title %}Meu Dossiê Profissional — ThothCVs AI{% endblock %}
+
+{% block main_class %}w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    
+    <!-- 1. TOPO: Apresentação & Dropzone de Importação Inteligente -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-200 dark:border-slate-800">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <span>📝</span> Meu Dossiê Profissional
+            </h1>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
+                Sua fonte central da verdade. Todos os currículos gerados são ancorados exclusivamente nestes dados factuais.
+            </p>
+        </div>
+
+        <!-- Área de Upload Rápido (Drag & Drop / Botão) -->
+        <div class="flex-shrink-0">
+            <form 
+                id="import-cv-form" 
+                hx-post="/profile/import-cv" 
+                hx-encoding="multipart/form-data" 
+                hx-target="#modal-container" 
+                hx-indicator="#import-spinner"
+                class="flex items-center gap-3">
+                
+                <input 
+                    type="file" 
+                    id="resume-file-input" 
+                    name="file" 
+                    accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
+                    class="hidden" 
+                    onchange="if(this.files.length) { htmx.trigger('#import-cv-form', 'submit'); }">
+                
+                <label 
+                    for="resume-file-input" 
+                    class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all shadow-xs cursor-pointer focus-within:ring-2 focus-within:ring-indigo-500">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <span>Carregar Currículo (PDF/DOCX)</span>
+                    <span id="import-spinner" class="htmx-indicator animate-spin ml-1">⟳</span>
+                </label>
+            </form>
+            <span class="block text-[10px] text-slate-500 dark:text-slate-400 mt-1 text-center md:text-right">
+                Extração 100% factual com Zero Alucinação
+            </span>
+        </div>
+    </div>
+
+    <!-- 2. RESUMO DE IDENTIFICAÇÃO DO USUÁRIO -->
+    <div class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl uppercase shadow-md select-none">
+                    {{ (current_user.full_name[:1] if current_user.full_name else current_user.email[:1]) | upper }}
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900 dark:text-slate-100">
+                        {{ current_user.full_name or "Nome não informado" }}
+                    </h2>
+                    <p class="text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                        {{ current_user.target_title or "Cargo / Título profissional não configurado" }}
+                    </p>
+                    <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        <span>✉️ {{ current_user.email }}</span>
+                        {% if current_user.phone %}<span>📞 {{ current_user.phone }}</span>{% endif %}
+                        {% if current_user.location %}<span>📍 {{ current_user.location }}</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Links Sociais / Portfólio -->
+            <div class="flex items-center gap-2">
+                {% if current_user.linkedin_url %}
+                <a href="{{ current_user.linkedin_url }}" target="_blank" rel="noopener noreferrer" class="p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium transition-colors" title="LinkedIn">
+                    LinkedIn ↗
+                </a>
+                {% endif %}
+                {% if current_user.github_url %}
+                <a href="{{ current_user.github_url }}" target="_blank" rel="noopener noreferrer" class="p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium transition-colors" title="GitHub">
+                    GitHub ↗
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. GRADE PRINCIPAL DO DOSSIÊ: EXPERIÊNCIAS E COLUNA LATERAL -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <!-- COLUNA PRINCIPAL (2/3): Experiências e Formação -->
+        <div class="lg:col-span-2 space-y-8">
+            
+            <!-- SEÇÃO DE EXPERIÊNCIAS -->
+            <section class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">💼</span>
+                        <h3 class="text-base font-bold text-slate-900 dark:text-slate-100">
+                            Experiências Profissionais ({{ (dossier.experiences | length) if dossier else 0 }})
+                        </h3>
+                    </div>
+                </div>
+
+                <div id="experiences-list" class="space-y-4">
+                    {% if dossier and dossier.experiences %}
+                        {% for exp in dossier.experiences %}
+                        <div class="p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+                            <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-1">
+                                <div>
+                                    <h4 class="font-bold text-sm text-slate-900 dark:text-slate-100">{{ exp.position_title }}</h4>
+                                    <div class="text-xs font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
+                                        {{ exp.company_name }}
+                                        {% if exp.location %} · <span class="text-slate-500 font-normal">{{ exp.location }}</span>{% endif %}
+                                        <span class="inline-block ml-1 px-1.5 py-0.2 rounded-sm bg-slate-200 dark:bg-slate-800 text-[10px] uppercase font-mono text-slate-600 dark:text-slate-400">{{ exp.work_model }}</span>
+                                    </div>
+                                </div>
+                                <span class="text-xs font-medium text-slate-500 dark:text-slate-400 font-mono">
+                                    {{ exp.start_date.strftime('%m/%Y') if exp.start_date else '—' }} → 
+                                    {{ exp.end_date.strftime('%m/%Y') if exp.end_date else ('Atual' if exp.is_current else '—') }}
+                                </span>
+                            </div>
+
+                            {% if exp.description %}
+                            <p class="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                                {{ exp.description }}
+                            </p>
+                            {% endif %}
+
+                            {% if exp.tech_stack %}
+                            <div class="flex flex-wrap gap-1 mt-3">
+                                {% for tech in exp.tech_stack %}
+                                <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                    {{ tech }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="p-8 text-center rounded-xl border border-dashed border-slate-300 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs">
+                            <p>Nenhuma experiência profissional cadastrada.</p>
+                            <p class="mt-1">Faça upload do seu currículo acima ou adicione manualmente.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- SEÇÃO DE FORMAÇÃO ACADÊMICA -->
+            <section class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">🎓</span>
+                        <h3 class="text-base font-bold text-slate-900 dark:text-slate-100">
+                            Formação Acadêmica ({{ (dossier.educations | length) if dossier else 0 }})
+                        </h3>
+                    </div>
+                </div>
+
+                <div id="educations-list" class="space-y-3">
+                    {% if dossier and dossier.educations %}
+                        {% for edu in dossier.educations %}
+                        <div class="p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
+                            <div class="flex items-center justify-between">
+                                <h4 class="font-bold text-sm text-slate-900 dark:text-slate-100">
+                                    {{ edu.degree }} em {{ edu.field_of_study }}
+                                </h4>
+                                <span class="text-xs text-slate-500 font-mono">
+                                    {{ edu.start_date.strftime('%Y') if edu.start_date else '—' }} → 
+                                    {{ edu.end_date.strftime('%Y') if edu.end_date else ('Atual' if edu.is_current else '—') }}
+                                </span>
+                            </div>
+                            <div class="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                                {{ edu.institution_name }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-xs text-slate-500 dark:text-slate-400 italic">Nenhuma formação acadêmica cadastrada.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+        </div>
+
+        <!-- COLUNA LATERAL (1/3): Competências, Idiomas e Certificações -->
+        <div class="space-y-8">
+            
+            <!-- COMPETÊNCIAS & HABILIDADES -->
+            <section class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">⚡</span>
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-slate-100">
+                            Competências ({{ (dossier.skills | length) if dossier else 0 }})
+                        </h3>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-1.5">
+                    {% if dossier and dossier.skills %}
+                        {% for skill in dossier.skills %}
+                        <span class="text-xs px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                            {{ skill.name }}
+                        </span>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-xs text-slate-500 italic">Nenhuma competência cadastrada.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- IDIOMAS -->
+            <section class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">🌐</span>
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-slate-100">
+                            Idiomas ({{ (dossier.languages | length) if dossier else 0 }})
+                        </h3>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    {% if dossier and dossier.languages %}
+                        {% for lang in dossier.languages %}
+                        <div class="flex items-center justify-between text-xs p-2 rounded-lg bg-slate-50 dark:bg-slate-850">
+                            <span class="font-semibold text-slate-800 dark:text-slate-200">{{ lang.language_name }}</span>
+                            <span class="text-slate-500 capitalize">{{ lang.proficiency_level }}</span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-xs text-slate-500 italic">Nenhum idioma cadastrado.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- CERTIFICAÇÕES & PROJETOS -->
+            <section class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">🏆</span>
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-slate-100">
+                            Certificações ({{ (dossier.certifications | length) if dossier else 0 }})
+                        </h3>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    {% if dossier and dossier.certifications %}
+                        {% for cert in dossier.certifications %}
+                        <div class="text-xs p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
+                            <div class="font-semibold text-slate-900 dark:text-slate-100">{{ cert.name }}</div>
+                            <div class="text-slate-500 mt-0.5">{{ cert.issuing_organization }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-xs text-slate-500 italic">Nenhuma certificação cadastrada.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}

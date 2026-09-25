@@ -154,3 +154,80 @@ async def test_deps_auth_exceptions_and_current_user() -> None:
     # 5. get_document_service factory
     doc_service = await get_document_service(db=db)
     assert doc_service is not None
+
+
+def test_guardrail_resolve_gemini_api_key_security(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Valida resolução e decifração de chave Gemini com AAD de segurança e fallbacks.
+
+    VETOR DE AMEAÇA:
+    - CWE-312: Cleartext Storage of Sensitive Information.
+    - CWE-327: Use of a Broken or Risky Cryptographic Algorithm.
+    - Impacto Potencial: Vazamento de chaves BYOK de usuários ou descriptografia cruzada
+      indevida entre tenants.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O sistema DEVE decifrar a chave privada do usuário usando seu user_id como
+      Associated Authenticated Data (AAD).
+    - Caso a decifração com AAD falhe, tenta compatibilidade sem AAD.
+    - Se ambas falharem ou o usuário não tiver chave própria, DEVE recorrer de forma segura
+      à variável de ambiente GEMINI_API_KEY.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Descartar a validação de AAD ou armazenar a chave em texto puro compromete a segurança
+      de segredos por usuário.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Assere que chave criptografada com AAD retorna o plaintext correto, chave legada
+      descriptografa no fallback, e falha total recorre à variável de ambiente sem quebrar.
+    """
+    from app.api.v1.deps import (
+        resolve_gemini_api_key,
+    )
+    from app.core.crypto import crypto_service
+
+    monkeypatch.setenv("GEMINI_API_KEY", "env_gemini_fallback_key")
+
+    # 1. Usuário None -> Recorre ao ambiente
+    assert resolve_gemini_api_key(None) == "env_gemini_fallback_key"
+
+    # 2. Usuário sem settings -> Recorre ao ambiente
+    user_no_settings = User(id=uuid.uuid4(), email="no_settings@thoth.ai")
+    assert resolve_gemini_api_key(user_no_settings) == "env_gemini_fallback_key"
+
+    # 3. Usuário com chave cifrada com AAD (padrão seguro)
+    user_id = uuid.uuid4()
+    aad = str(user_id).encode("utf-8")
+    enc_key_with_aad = crypto_service.encrypt("secret_byok_with_aad", associated_data=aad)
+    user_with_aad = User(id=user_id, email="aad@thoth.ai")
+    user_with_aad.settings = UserSettings(encrypted_gemini_api_key=enc_key_with_aad)
+    assert resolve_gemini_api_key(user_with_aad) == "secret_byok_with_aad"
+
+    # 4. Usuário com chave legada sem AAD (fallback 1)
+    enc_key_legacy = crypto_service.encrypt("secret_legacy_no_aad")
+    user_legacy = User(id=uuid.uuid4(), email="legacy@thoth.ai")
+    user_legacy.settings = UserSettings(encrypted_gemini_api_key=enc_key_legacy)
+    assert resolve_gemini_api_key(user_legacy) == "secret_legacy_no_aad"
+
+    # 5. Chave corrompida que falha em ambos os decrypts -> fallback para env
+    user_corrupt = User(id=uuid.uuid4(), email="corrupt@thoth.ai")
+    user_corrupt.settings = UserSettings(
+        encrypted_gemini_api_key="corrupted_ciphertext_not_valid_b64"
+    )
+    assert resolve_gemini_api_key(user_corrupt) == "env_gemini_fallback_key"
+
+
+@pytest.mark.asyncio
+async def test_get_resume_parser_adapter_and_profile_service() -> None:
+    """Valida instanciação das fábricas de parsing de currículo e serviço de perfil."""
+    from app.adapters.gemini_resume_parser_adapter import GeminiResumeParserAdapter
+    from app.api.v1.deps import get_profile_service, get_resume_parser_adapter
+    from app.services.profile_service import ProfileService
+
+    adapter = get_resume_parser_adapter(api_key="mock_key_123")
+    assert isinstance(adapter, GeminiResumeParserAdapter)
+    assert adapter._api_key == "mock_key_123"
+
+    mock_db = MagicMock()
+    prof_service = await get_profile_service(db=mock_db)
+    assert isinstance(prof_service, ProfileService)
+    assert prof_service._db == mock_db

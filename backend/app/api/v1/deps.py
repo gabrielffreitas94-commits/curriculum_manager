@@ -20,8 +20,10 @@ from app.ports.auth_port import AuthError, AuthUser, InvalidTokenError
 from app.ports.oauth_port import OAuthPort
 
 if TYPE_CHECKING:
+    from app.ports.resume_parser_port import ResumeParserPort
     from app.services.auth_service import AuthService
     from app.services.document_service import DocumentService
+    from app.services.profile_service import ProfileService
     from app.services.user_service import UserService
 
 # Instâncias dos adaptadores de autenticação
@@ -143,3 +145,61 @@ async def get_auth_service(
     from app.services.auth_service import AuthService
 
     return AuthService(db=db, auth_port=auth_adapter)
+
+
+async def get_profile_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> "ProfileService":
+    """Injeta uma instância ativa de ProfileService com a sessão de banco do request.
+
+    Args:
+        db: Sessão de banco de dados ativa.
+
+    Returns:
+        ProfileService pronto para uso.
+    """
+    from app.services.profile_service import ProfileService
+
+    return ProfileService(db=db)
+
+
+def resolve_gemini_api_key(user: User | None = None) -> str | None:
+    """Resolve a chave de API do Gemini a partir das configurações do usuário ou ambiente.
+
+    Args:
+        user: Instância opcional do usuário autenticado.
+
+    Returns:
+        str | None: Chave do Gemini decifrada ou obtida do ambiente.
+    """
+    import os
+
+    from app.core.crypto import crypto_service
+
+    if user and user.settings and user.settings.encrypted_gemini_api_key:
+        try:
+            user_associated_data = str(user.id).encode("utf-8")
+            return crypto_service.decrypt(
+                user.settings.encrypted_gemini_api_key,
+                associated_data=user_associated_data,
+            )
+        except Exception:
+            try:
+                return crypto_service.decrypt(user.settings.encrypted_gemini_api_key)
+            except Exception:
+                pass
+    return os.getenv("GEMINI_API_KEY")
+
+
+def get_resume_parser_adapter(api_key: str | None = None) -> "ResumeParserPort":
+    """Instancia o adaptador concreto de parsing de currículos.
+
+    Args:
+        api_key: Chave do Gemini decifrada ou default.
+
+    Returns:
+        ResumeParserPort: Instância do adaptador de parsing.
+    """
+    from app.adapters.gemini_resume_parser_adapter import GeminiResumeParserAdapter
+
+    return GeminiResumeParserAdapter(api_key=api_key)

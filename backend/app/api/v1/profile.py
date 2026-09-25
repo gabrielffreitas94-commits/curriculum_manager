@@ -7,10 +7,14 @@ certificações, projetos, competências e agregação do dossiê sob /api/v1/pr
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import get_current_user
+from app.api.v1.deps import (
+    get_current_user,
+    get_resume_parser_adapter,
+    resolve_gemini_api_key,
+)
 from app.api.v1.schemas.profile import (
     CertificationCreateRequest,
     CertificationResponse,
@@ -33,8 +37,18 @@ from app.api.v1.schemas.profile import (
     SkillUpdateRequest,
 )
 from app.core.database import get_db_session
+from app.core.file_security import (
+    FileContentMismatchError,
+    FileTooLargeError,
+    InvalidFileTypeError,
+    validate_resume_file,
+)
+from app.core.logging import get_logger
 from app.domain.models import User
+from app.ports.resume_parser_port import ParsedProfileDTO, ResumeParserError
 from app.services.profile_service import ProfileService
+
+logger = get_logger("profile_router")
 
 router = APIRouter(prefix="/profile", tags=["Repositório Profissional (Dossiê)"])
 
@@ -515,3 +529,65 @@ async def get_full_dossier(
     service: ProfileService = Depends(get_profile_service),
 ) -> Any:
     return await service.get_full_dossier(user_id=current_user.id)
+
+
+# ==================== IMPORTAÇÃO INTELIGENTE DE CURRÍCULO ====================
+@router.post(
+    "/parse-resume",
+    response_model=ParsedProfileDTO,
+    status_code=status.HTTP_200_OK,
+    summary="Processa e extrai dados factuais de um currículo (PDF/DOCX) via IA",
+    description=(
+        "Lê documento PDF ou Word (.docx), valida integridade "
+        "e extrai dados estruturados sem alucinação."
+    ),
+)
+async def parse_resume_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    file_bytes = await file.read()
+    try:
+        mime_type, _ = validate_resume_file(
+            file_bytes=file_bytes,
+            filename=file.filename or "uploaded_resume",
+            content_type=file.content_type,
+        )
+    except FileTooLargeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=str(exc),
+        ) from exc
+    except (InvalidFileTypeError, FileContentMismatchError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    api_key = resolve_gemini_api_key(current_user)
+    parser = get_resume_parser_adapter(api_key=api_key)
+    try:
+        return await parser.parse_resume(
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            filename=file.filename or "uploaded_resume",
+        )
+    except ResumeParserError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/import-parsed",
+    status_code=status.HTTP_201_CREATED,
+    summary="Persiste em lote os dados factuais revisados no dossiê do usuário",
+    description="Recebe o DTO estruturado e realiza a persistência atômica das entidades no banco.",
+)
+async def import_parsed_resume(
+    body: ParsedProfileDTO,
+    current_user: User = Depends(get_current_user),
+    service: ProfileService = Depends(get_profile_service),
+) -> Any:
+    return await service.import_parsed_profile(user_id=current_user.id, parsed_profile=body)

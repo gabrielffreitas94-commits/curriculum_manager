@@ -256,3 +256,157 @@ async def test_get_full_dossier(
     assert len(dossier["experiences"]) == 1
     assert len(dossier["skills"]) == 1
     assert len(dossier["educations"]) == 0
+
+
+def test_parse_flexible_date() -> None:
+    """Valida a conversão de strings de data nos mais diversos formatos aceitos."""
+    from app.services.profile_service import parse_flexible_date
+
+    assert parse_flexible_date(None) is None
+    assert parse_flexible_date("") is None
+    assert parse_flexible_date("   ") is None
+    assert parse_flexible_date("2024") == date(2024, 1, 1)
+    assert parse_flexible_date("2024-06") == date(2024, 6, 1)
+    assert parse_flexible_date("2024-06-25") == date(2024, 6, 25)
+    assert parse_flexible_date("invalid-date-format") is None
+    assert parse_flexible_date("99999-99-99") is None
+
+
+@pytest.mark.asyncio
+async def test_import_parsed_profile_full_flow(
+    db_session: AsyncSession,
+    profile_user: User,
+) -> None:
+    """Valida persistência em lote do perfil extraído por IA e atualização dos dados do usuário."""
+    from app.ports.resume_parser_port import (
+        ParsedCertificationDTO,
+        ParsedEducationDTO,
+        ParsedExperienceDTO,
+        ParsedLanguageDTO,
+        ParsedPersonalDataDTO,
+        ParsedProfileDTO,
+        ParsedProjectDTO,
+        ParsedSkillDTO,
+    )
+
+    db_session.add(profile_user)
+    await db_session.flush()
+
+    service = ProfileService(db=db_session)
+    user_id = profile_user.id
+
+    parsed_dto = ParsedProfileDTO(
+        personal_data=ParsedPersonalDataDTO(
+            full_name="Novo Nome Atualizado",
+            headline="Tech Lead",
+            phone="+55 11 98888-1234",
+            location="Curitiba, PR",
+            linkedin_url="https://linkedin.com/in/novoperfil",
+            github_url="https://github.com/novogithub",
+            portfolio_url="https://meusite.com",
+        ),
+        experiences=[
+            ParsedExperienceDTO(
+                company_name="Alpha Tech",
+                position_title="Software Architect",
+                location="Remoto",
+                work_model="remote",
+                start_date="2021-03",
+                end_date=None,
+                is_current=True,
+                description="Desenvolvimento em larga escala.",
+                tech_stack=["Python", "Kafka"],
+            )
+        ],
+        educations=[
+            ParsedEducationDTO(
+                institution_name="Universidade Federal",
+                degree="Mestrado",
+                field_of_study="IA",
+                start_date="2019",
+                end_date="2021",
+                is_current=False,
+            )
+        ],
+        skills=[
+            ParsedSkillDTO(
+                name="Kubernetes",
+                category="devops",
+                proficiency_level="expert",
+                years_of_experience=5,
+            )
+        ],
+        languages=[
+            ParsedLanguageDTO(
+                language_name="Inglês",
+                proficiency_level="fluente",
+            )
+        ],
+        certifications=[
+            ParsedCertificationDTO(
+                name="AWS Certified Solutions Architect",
+                issuing_organization="AWS",
+                issue_date="2023-01-15",
+            )
+        ],
+        projects=[
+            ParsedProjectDTO(
+                title="Curriculum Engine",
+                description="Motor de currículos",
+                technologies=["FastAPI", "HTMX"],
+            )
+        ],
+    )
+
+    counts = await service.import_parsed_profile(user_id=user_id, parsed_profile=parsed_dto)
+    assert counts["experiences"] == 1
+    assert counts["educations"] == 1
+    assert counts["skills"] == 1
+    assert counts["languages"] == 1
+    assert counts["certifications"] == 1
+    assert counts["projects"] == 1
+
+    # Valida que dados cadastrais foram propagados para a entidade User
+    assert profile_user.target_title == "Tech Lead"
+    assert profile_user.phone == "+55 11 98888-1234"
+    assert profile_user.location == "Curitiba, PR"
+    assert profile_user.linkedin_url == "https://linkedin.com/in/novoperfil"
+    assert profile_user.github_url == "https://github.com/novogithub"
+    assert profile_user.portfolio_url == "https://meusite.com"
+
+
+@pytest.mark.asyncio
+async def test_import_parsed_profile_fills_empty_full_name(
+    db_session: AsyncSession,
+) -> None:
+    """Valida preenchimento de full_name no User quando previamente vazio."""
+    from app.ports.resume_parser_port import ParsedPersonalDataDTO, ParsedProfileDTO
+
+    user = User(
+        id=uuid.uuid4(),
+        firebase_uid="uid_empty_name",
+        email="empty_name@thoth.ai",
+        full_name="",
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    service = ProfileService(db=db_session)
+    dto = ParsedProfileDTO(
+        personal_data=ParsedPersonalDataDTO(full_name="Extracted Name"),
+    )
+    await service.import_parsed_profile(user_id=user.id, parsed_profile=dto)
+    assert user.full_name == "Extracted Name"
+
+
+def test_parse_flexible_date_edge_cases() -> None:
+    """Valida casos extremos de parsing flexível de datas (anos incompletos, inválidos)."""
+    from app.services.profile_service import parse_flexible_date
+
+    assert parse_flexible_date("123") is None
+    assert parse_flexible_date("2024-invalid") is None
+    assert parse_flexible_date("") is None
+    assert parse_flexible_date(None) is None
+    assert parse_flexible_date("2023") == date(2023, 1, 1)
+    assert parse_flexible_date("2023-05") == date(2023, 5, 1)
+    assert parse_flexible_date("2023-05-15") == date(2023, 5, 15)

@@ -4,17 +4,26 @@ import hmac
 import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.api.v1.deps import get_auth_service, google_oauth_adapter
+from app.api.v1.deps import (
+    get_auth_service,
+    get_profile_service,
+    get_resume_parser_adapter,
+    google_oauth_adapter,
+    resolve_gemini_api_key,
+)
 from app.core.config import settings
+from app.core.file_security import FileSecurityError, validate_resume_file
 from app.core.logging import get_logger
 from app.core.telemetry import set_user_id
 from app.domain.models import User
 from app.ports.oauth_port import OAuthError
+from app.ports.resume_parser_port import ParsedProfileDTO, ResumeParserError
 from app.services.auth_service import AuthService
+from app.services.profile_service import ProfileService
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -161,4 +170,140 @@ async def logout(request: Request) -> Response:
     response = HTMLResponse(content="", status_code=status.HTTP_200_OK)
     response.delete_cookie(key="session_token", path="/")
     response.headers["HX-Refresh"] = "true"
+    return response
+
+
+# ==================== DOSSIÊ PROFISSIONAL (WEB UI) ====================
+@router.get("/profile", response_class=HTMLResponse, status_code=status.HTTP_200_OK)
+async def profile_page(
+    request: Request,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    profile_service: ProfileService = Depends(get_profile_service),
+) -> Response:
+    """Renderiza a página principal do Dossiê Profissional com o repositório do candidato."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    dossier = await profile_service.get_full_dossier(current_user.id)
+    return templates.TemplateResponse(
+        request=request,
+        name="profile/index.html.jinja2",
+        context={
+            "request": request,
+            "current_user": current_user,
+            "dossier": dossier,
+            "active_tab": "profile",
+        },
+    )
+
+
+@router.post("/profile/import-cv", response_class=HTMLResponse)
+async def import_cv_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+) -> Response:
+    """Processa o upload de um currículo (PDF/DOCX) e retorna o modal de revisão via HTMX."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    file_bytes = await file.read()
+    try:
+        mime_type, _ = validate_resume_file(
+            file_bytes=file_bytes,
+            filename=file.filename or "resume",
+            content_type=file.content_type,
+        )
+    except FileSecurityError as exc:
+        logger.warning("web_resume_upload_rejected", error=str(exc))
+        modal_html = (
+            '<div id="import-review-modal-backdrop" class="fixed inset-0 z-50 flex '
+            'items-center justify-center p-4 bg-slate-950/60" role="dialog" aria-modal="true">\n'
+            '  <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-md w-full '
+            'border border-rose-200 dark:border-rose-900 shadow-xl text-center space-y-4">\n'
+            '    <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 '
+            "dark:bg-rose-950 dark:text-rose-400 mx-auto flex items-center justify-center "
+            'text-xl font-bold">⚠️</div>\n'
+            '    <h3 class="text-base font-bold text-slate-900 dark:text-slate-100">'
+            "Falha no Envio do Arquivo</h3>\n"
+            f'    <p class="text-xs text-slate-600 dark:text-slate-400">{exc}</p>\n'
+            '    <button type="button" onclick="closeModal()" class="w-full py-2 bg-slate-900 '
+            "text-white dark:bg-white dark:text-slate-900 rounded-xl text-xs font-bold "
+            'cursor-pointer">Fechar</button>\n'
+            "  </div>\n"
+            "</div>"
+        )
+        return HTMLResponse(
+            content=modal_html,
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    api_key = resolve_gemini_api_key(current_user)
+    parser = get_resume_parser_adapter(api_key=api_key)
+    try:
+        parsed_dto = await parser.parse_resume(
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            filename=file.filename or "uploaded_resume",
+        )
+    except ResumeParserError as exc:
+        logger.error("web_resume_parsing_error", error=str(exc))
+        error_modal_html = (
+            '<div id="import-review-modal-backdrop" class="fixed inset-0 z-50 flex '
+            'items-center justify-center p-4 bg-slate-950/60" role="dialog" aria-modal="true">\n'
+            '  <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-md w-full '
+            'border border-amber-200 dark:border-amber-900 shadow-xl text-center space-y-4">\n'
+            '    <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-600 '
+            "dark:bg-amber-950 dark:text-amber-400 mx-auto flex items-center justify-center "
+            'text-xl font-bold">⚠️</div>\n'
+            '    <h3 class="text-base font-bold text-slate-900 dark:text-slate-100">'
+            "Não foi possível analisar o currículo</h3>\n"
+            f'    <p class="text-xs text-slate-600 dark:text-slate-400">{exc}</p>\n'
+            '    <button type="button" onclick="closeModal()" class="w-full py-2 bg-slate-900 '
+            "text-white dark:bg-white dark:text-slate-900 rounded-xl text-xs font-bold "
+            'cursor-pointer">Fechar</button>\n'
+            "  </div>\n"
+            "</div>"
+        )
+        return HTMLResponse(
+            content=error_modal_html,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+
+    serialized = parsed_dto.model_dump_json()
+    return templates.TemplateResponse(
+        request=request,
+        name="profile/partials/import_review_modal.html.jinja2",
+        context={
+            "request": request,
+            "current_user": current_user,
+            "parsed_dto": parsed_dto,
+            "serialized_dto": serialized,
+        },
+    )
+
+
+@router.post("/profile/confirm-import")
+async def confirm_profile_import(
+    payload: str = Form(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    profile_service: ProfileService = Depends(get_profile_service),
+) -> Response:
+    """Confirma e persiste no banco de dados os dados extraídos aprovados pelo usuário."""
+    if current_user is None:
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    parsed_dto = ParsedProfileDTO.model_validate_json(payload)
+    await profile_service.import_parsed_profile(user_id=current_user.id, parsed_profile=parsed_dto)
+    logger.info("web_profile_import_confirmed", user_id=str(current_user.id))
+
+    response = Response(status_code=status.HTTP_200_OK)
+    response.headers["HX-Redirect"] = "/profile"
     return response

@@ -35,6 +35,24 @@
                 <span>ThothSCV</span>
             </a>
 
+            <!-- Navegação Central para Usuário Autenticado -->
+            {% if current_user %}
+            <nav class="hidden md:flex items-center space-x-1" aria-label="Navegação Principal">
+                <a href="/profile" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {% if active_tab == 'profile' %}bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white font-semibold shadow-xs{% else %}text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60{% endif %}">
+                    📝 Meu Dossiê
+                </a>
+                <a href="/resumes/new" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {% if active_tab == 'resumes' %}bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white font-semibold shadow-xs{% else %}text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60{% endif %}">
+                    ✨ Gerador de Currículo
+                </a>
+                <a href="/applications" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {% if active_tab == 'applications' %}bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white font-semibold shadow-xs{% else %}text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60{% endif %}">
+                    📊 Candidaturas
+                </a>
+                <a href="/settings" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {% if active_tab == 'settings' %}bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white font-semibold shadow-xs{% else %}text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60{% endif %}">
+                    ⚙️ Configurações
+                </a>
+            </nav>
+            {% endif %}
+
             <!-- Ações: Dropdown de Idioma e Tema -->
             <div class="flex items-center space-x-3">
                 <!-- Dropdown de Idioma -->
@@ -150,7 +168,7 @@
     </header>
 
     <!-- 2. CENTRO DINÂMICO (Área que o HTMX substitui) -->
-    <main id="main-content" class="flex-grow flex flex-col items-center justify-center p-6">
+    <main id="main-content" class="flex-grow flex flex-col {% block main_class %}items-center justify-center p-6{% endblock %}">
         {% block content %}{% endblock %}
     </main>
 

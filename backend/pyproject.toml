@@ -23,6 +23,7 @@ dependencies = [
     "email-validator>=2.3.0",
     "slowapi>=0.1.10",
     "structlog>=24.4.0",
+    "python-multipart>=0.0.20",
 ]
 
 [project.optional-dependencies]
