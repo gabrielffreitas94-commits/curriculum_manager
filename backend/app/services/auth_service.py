@@ -42,12 +42,13 @@ class AuthService:
         self._auth_port = auth_port
         self._secret_key = secret_key or settings.SECRET_KEY
 
-    def create_session_jwt(self, uid: str, email: str) -> str:
+    def create_session_jwt(self, uid: str, email: str, token_version: int = 1) -> str:
         """Emite um token JWT de sessão assinado para persistência em cookie HTTP.
 
         Args:
             uid: Identificador universal do usuário (Firebase UID ou google_{sub}).
             email: E-mail primário do usuário autenticado.
+            token_version: Versão do token para invalidação ativa de sessão (default: 1).
 
         Returns:
             str: Token JWT assinado contendo claims essenciais de sessão.
@@ -56,24 +57,41 @@ class AuthService:
         payload = {
             "sub": uid,
             "email": email,
+            "ver": token_version,
             "iat": now,
             "exp": now + (86400 * 7),
             "iss": "thothcvs-web",
         }
         return jwt.encode(payload, self._secret_key, algorithm="HS256")
 
+    async def revoke_session(self, user: User) -> None:
+        """Incrementa token_version do usuário no banco, invalidando todos os JWTs anteriores.
+
+        Args:
+            user: Instância de usuário cuja sessão deve ser revogada.
+        """
+        current_version = getattr(user, "token_version", 1) or 1
+        user.token_version = current_version + 1
+        await self._db.commit()
+        await self._db.refresh(user)
+        logger.info(
+            "auth_session_revoked",
+            user_id=str(user.id),
+            new_token_version=user.token_version,
+        )
+
     async def get_authenticated_user(self, session_token: str | None) -> User | None:
         """Resolve e recupera a entidade User a partir do cookie de sessão.
 
         Executa duas etapas de resolução:
-        1. Validação do JWT de sessão assinado com a SECRET_KEY do servidor.
+        1. Validação do JWT de sessão assinado (SECRET_KEY) e checagem de ver (token_version).
         2. Fallback para validação de token via AuthPort (ex: Firebase / Bearer).
 
         Args:
             session_token: Valor do cookie session_token recebido na requisição.
 
         Returns:
-            User | None: Usuário encontrado com configurações carregadas ou None se inválido.
+            User | None: Usuário com configurações ou None se inválido/revogado.
         """
         if not session_token or not session_token.strip():
             return None
@@ -87,6 +105,7 @@ class AuthService:
                 issuer="thothcvs-web",
             )
             sub = payload.get("sub")
+            token_ver = payload.get("ver")
             if sub:
                 result = await self._db.execute(
                     select(User)
@@ -95,7 +114,18 @@ class AuthService:
                 )
                 user = result.scalar_one_or_none()
                 if user:
+                    # Se o token possui claim 'ver', deve coincidir com user.token_version
+                    user_ver = getattr(user, "token_version", 1) or 1
+                    if token_ver is not None and token_ver != user_ver:
+                        logger.warning(
+                            "auth_session_token_revoked",
+                            user_id=str(user.id),
+                            token_ver=token_ver,
+                            user_ver=user_ver,
+                        )
+                        return None
                     return user
+
         except Exception:
             pass
 
@@ -186,5 +216,9 @@ class AuthService:
                 auth_provider="google",
             )
 
-        session_token = self.create_session_jwt(uid=user.firebase_uid, email=user.email)
+        session_token = self.create_session_jwt(
+            uid=user.firebase_uid,
+            email=user.email,
+            token_version=getattr(user, "token_version", 1),
+        )
         return user, session_token

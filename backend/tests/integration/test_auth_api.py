@@ -76,7 +76,22 @@ async def test_auth_sync_idempotent_returns_existing_user(
 async def test_auth_sync_missing_token_unauthorized(
     async_client: AsyncClient,
 ) -> None:
-    """Testa rejeição com 401 caso o cabeçalho Authorization não seja informado."""
+    """Valida rejeição fail-closed quando cabeçalho Authorization está ausente.
+
+    VETOR DE AMEAÇA:
+    - CWE-306: Missing Authentication for Critical Function.
+    - Impacto: Acesso anônimo ou criação de usuários fantasmas sem identificação de identidade.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O endpoint /api/v1/auth/sync DEVE responder imediatamente com HTTP 401 Unauthorized
+      sem invocar banco de dados ou adaptadores externos.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Tornar a dependência security opcional ou permitir fallback para usuário mock anônimo.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Requisição sem cabeçalho Authorization DEVE retornar HTTP 401.
+    """
     response = await async_client.post("/api/v1/auth/sync")
     assert response.status_code == 401
 

@@ -128,7 +128,23 @@ async def test_tenant_isolation_boundary(
     async_client: AsyncClient,
     setup_users: dict[str, str],
 ) -> None:
-    """Garante que o Usuário B nunca consiga acessar ou modificar dados do Usuário A."""
+    """
+    VETOR DE AMEAÇA: CWE-639 / CWE-284 & OWASP API1:2023 (Broken Object Level Authorization / IDOR).
+    Um usuário malicioso ou não autorizado (User B) tenta listar, alterar ou deletar experiências
+    profissionais e dados de carreira confidenciais de outro candidato (User A).
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A listagem de recursos do User B deve retornar isolamento completo (coleção vazia para dados alheios),
+    e requisições diretas de alteração (PUT) ou deleção (DELETE) sobre o 'id' de outro usuário
+    devem falhar estritamente com HTTP 404 (Not Found).
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um refatorador pode omitir o filtro 'user_id == current_user.id' nas consultas SQLAlchemy
+    do repositório sob a premissa de que o 'id' (UUID) já seria único, reabrindo brecha crítica de BOLA.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    User B recebe lista vazia e status 404 incondicional em PUT e DELETE sobre recursos de User A.
+    """
     headers_a = {"Authorization": setup_users["token_a"]}
     headers_b = {"Authorization": setup_users["token_b"]}
 

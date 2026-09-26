@@ -1,6 +1,6 @@
-# 📋 Backlog de Tarefas — Autenticação
+# 📋 Backlog de Tarefas — ThothCVs AI
 
-Este documento centraliza as tarefas planejadas para o módulo de **Autenticação** do ThothSCV AI.
+Este documento centraliza as tarefas planejadas e o roadmap técnico do ThothCVs AI.
 
 ---
 
@@ -57,3 +57,34 @@ Permitir acesso para usuários que optem por não utilizar contas de redes socia
 - [ ] Geração de tokens efêmeros seguros com tempo de expiração (30 min).
 - [ ] Template HTML responsivo de e-mail com a identidade ThothSCV.
 - [ ] Rota e tela para redefinição de senha (`/auth/reset-password?token=...`).
+
+---
+
+## 🟢 Prioridade 3 (P3): Orquestração Agêntica & Automação Avançada de IA (Baixa Prioridade)
+
+Pesquisa, modelagem e integração de fluxos agênticos avançados (LangGraph / Multiagente) para automações complexas e autônomas do ciclo de carreira e candidaturas.
+
+### 3.1 Agente Autônomo "Job Hunter"
+- [ ] Mapeamento e navegação automatizada por fontes de vagas (portais, ATSs e feeds de oportunidades).
+- [ ] Extração e estruturação contínua de requisitos técnicos e perfil de vagas.
+- [ ] Tomada de decisão autônoma para triagem e pré-candidatura orientada às metas profissionais do usuário.
+- [ ] Execução resiliente com tratamento de bloqueios, rate limiting e tolerância a falhas de rede.
+
+### 3.2 Human-in-the-Loop com Pausas Longas
+- [ ] Implementação de suspensão de estado persistente (checkpointers duráveis em banco relacional).
+- [ ] Interrupção do fluxo em etapas críticas para validação ou input do candidato (ex: preenchimento de gaps de competências, respostas a questionários de candidatura).
+- [ ] Retomada determinística do estado a partir do ponto de pausa após interação do usuário na interface.
+- [ ] Notificações ativas (webhooks/push/e-mail) alertando sobre ações humanas pendentes no fluxo.
+
+### 3.3 Pipeline de Crítica/Refinamento Cíclico (Reflection)
+- [ ] Loop iterativo de autoavaliação e refinamento de currículos estruturados (Gerador ↔ Auditor/Crítico).
+- [ ] Feedback direcionado com diagnóstico granular de pontos de melhoria, métricas de impacto e conformidade ATS.
+- [ ] Critério de convergência estrito e limite máximo de iterações ($N$ voltas) para contenção de latência e consumo de tokens.
+- [ ] Salvaguarda inegociável do Grounding Trust Score (rejeição automática de versões que degradem a veracidade factual).
+
+### 3.4 Multiagente Especializado com Ferramentas
+- [ ] Decomposição de tarefas em agentes especialistas dedicados (Tom & Narrativa, Compliance ATS, Auditor de Veracidade Factual e Localização/Idiomas).
+- [ ] Definição de barramento de mensagens e protocolo estruturado de comunicação inter-agentes.
+- [ ] Disponibilização de ferramentas seguras (*tool calling*) isoladas em portas da Arquitetura Hexagonal (scraping, busca vetorial, validação de termos e renderização).
+- [ ] Auditoria de execução e observabilidade com métricas de telemetria por nó do grafo (latência, custo de tokens e rastreamento de decisões).
+

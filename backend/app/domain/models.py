@@ -81,6 +81,7 @@ class User(Base, PrimaryKeyUUIDMixin, TimestampMixin, SoftDeleteMixin):
     professional_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     # Relacionamentos
     settings: Mapped["UserSettings"] = relationship(

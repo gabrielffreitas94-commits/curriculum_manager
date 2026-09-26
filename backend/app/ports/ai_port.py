@@ -129,3 +129,40 @@ class AIPort(ABC):
             GenerationError: Se a geração violar o schema estruturado.
         """
         pass
+
+    @abstractmethod
+    async def chat_tailoring(
+        self,
+        messages: list["ChatMessage"],
+        job_description: str,
+        user_dossier: dict[str, Any],
+        prompt_skill_instructions: str,
+    ) -> str:
+        """Conversa interativamente com o candidato sobre a estratégia de tailoring do currículo.
+
+        Args:
+            messages: Histórico da conversa multi-turn.
+            job_description: Texto do anúncio da vaga.
+            user_dossier: Dossiê factual real do candidato.
+            prompt_skill_instructions: Diretrizes da metodologia selecionada.
+
+        Returns:
+            str: Resposta consultiva gerada pelo modelo de IA.
+
+        Raises:
+            MissingApiKeyError: Se a chave do Gemini estiver ausente.
+            AIError: Em caso de falha de comunicação ou resposta vazia.
+        """
+        pass
+
+
+class ChatMessage(BaseModel):
+    """Representação de uma mensagem no histórico conversacional com o Copilot.
+
+    Attributes:
+        role: Papel da mensagem ('user' ou 'assistant' / 'model').
+        content: Conteúdo textual da mensagem.
+    """
+
+    role: str
+    content: str

@@ -1,0 +1,101 @@
+<div id="kanban-board" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 items-start select-none">
+  {% set columns = [
+    ('applied', 'Candidatou-se', 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300', 'border-slate-200 dark:border-slate-800'),
+    ('screen', 'Triagem / HR', 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300', 'border-sky-200 dark:border-sky-900'),
+    ('tech_interview', 'Entrevista Técnica', 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300', 'border-indigo-200 dark:border-indigo-900'),
+    ('final_interview', 'Etapa Final', 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300', 'border-purple-200 dark:border-purple-900'),
+    ('offer', 'Proposta 🎉', 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300', 'border-emerald-200 dark:border-emerald-900'),
+    ('rejected', 'Não Selecionado', 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300', 'border-rose-200 dark:border-rose-900')
+  ] %}
+
+  {% for col_id, col_label, badge_class, border_class in columns %}
+  {% set col_apps = applications_by_status.get(col_id, []) %}
+  <div class="flex flex-col bg-slate-50/80 dark:bg-slate-900/60 rounded-2xl border {{ border_class }} p-3 min-h-[500px] space-y-3">
+    <!-- Cabeçalho da Coluna -->
+    <div class="flex items-center justify-between px-1 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+      <span class="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+        {{ col_label }}
+      </span>
+      <span class="px-2 py-0.5 rounded-full text-[11px] font-bold {{ badge_class }}">
+        {{ col_apps|length }}
+      </span>
+    </div>
+
+    <!-- Lista de Cards da Coluna -->
+    <div class="space-y-3 flex-1">
+      {% for app in col_apps %}
+      <div class="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-all space-y-2.5">
+        <!-- Nome da Empresa e Ações Rápidas -->
+        <div class="flex items-start justify-between gap-2">
+          <div class="space-y-0.5">
+            <h4 class="text-xs font-black text-slate-900 dark:text-slate-100 leading-tight">
+              {{ app.company_name }}
+            </h4>
+            <p class="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+              {{ app.job_title }}
+            </p>
+          </div>
+          <button 
+            type="button" 
+            hx-get="/applications/{{ app.id }}/detail" 
+            hx-target="#modal-container" 
+            class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1"
+            title="Ver detalhes da candidatura">
+            🔍
+          </button>
+        </div>
+
+        <!-- Alerta de Follow-up (> 7 dias) -->
+        {% if app.needs_follow_up %}
+        <div class="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/80 text-[10px] text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-1.5 animate-pulse">
+          <span>⚠️</span>
+          <span>Sem contato há mais de 7 dias! Faça um follow-up.</span>
+        </div>
+        {% endif %}
+
+        <!-- Metadados: Salário e Link -->
+        <div class="flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-400 pt-1">
+          {% if app.salary_range %}
+            <span class="font-medium text-emerald-600 dark:text-emerald-400">💰 {{ app.salary_range }}</span>
+          {% elif app.target_salary %}
+            <span class="font-medium text-emerald-600 dark:text-emerald-400">💰 {{ app.target_salary }}</span>
+          {% else %}
+            <span></span>
+          {% endif %}
+          {% if app.job_url %}
+            <a href="{{ app.job_url }}" target="_blank" rel="noopener noreferrer" class="hover:underline text-indigo-600 dark:text-indigo-400">
+              Link da Vaga ↗
+            </a>
+          {% endif %}
+        </div>
+
+        <!-- Seletor de Transição Rápida de Status via HTMX -->
+        <div class="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
+          <label for="status-{{ app.id }}" class="text-[10px] text-slate-400 font-medium">Status:</label>
+          <select 
+            id="status-{{ app.id }}"
+            name="new_status"
+            hx-post="/applications/{{ app.id }}/status"
+            hx-target="#kanban-board"
+            hx-swap="outerHTML"
+            class="text-[10px] font-semibold py-1 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 cursor-pointer focus:ring-1 focus:ring-indigo-500">
+            {% for s_val, s_label, _, _ in columns %}
+              <option value="{{ s_val }}" {% if app.status == s_val %}selected{% endif %}>
+                {{ s_label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+      </div>
+      {% endfor %}
+
+      {% if not col_apps %}
+      <div class="h-24 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-[11px] text-slate-400 italic">
+        Nenhuma candidatura
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>

@@ -239,7 +239,22 @@ async def test_notification_tenant_isolation(
     setup_notif_users: dict,
     db_session: AsyncSession,
 ) -> None:
-    """Garante que o User B receba 404 ao tentar marcar como lida notificação do User A."""
+    """
+    VETOR DE AMEAÇA: CWE-639 / CWE-284 (Broken Object Level Authorization / IDOR).
+    Um usuário autenticado (User B) tenta inspecionar ou alterar o estado de notificações
+    privadas pertencentes a outro usuário (User A).
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    O sistema DEVE retornar HTTP 404 (Not Found) ao tentar marcar como lida uma notificação
+    que pertença a outro usuário, preservando o sigilo de alertas e status de candidaturas.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode consultar a notificação no repositório filtrando apenas por 'id'
+    sem validar a cláusula 'user_id == current_user.id', reintroduzindo vazamento BOLA/IDOR.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    A tentativa do User B de interagir com 'notif_a.id' deve retornar status 404 estrito.
+    """
     headers_b = setup_notif_users["headers_b"]
     user_a_id = uuid.UUID(setup_notif_users["user_a_id"])
 

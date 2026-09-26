@@ -162,7 +162,23 @@ async def test_export_tenant_isolation(
     async_client: AsyncClient,
     setup_resumes: dict,
 ) -> None:
-    """Garante que o User B não consiga exportar currículo de User A (404 Not Found)."""
+    """
+    VETOR DE AMEAÇA: CWE-639 / CWE-284 & OWASP API1:2023 (Broken Object Level Authorization / IDOR).
+    Um usuário malicioso ou não autorizado (User B) tenta baixar/exportar os dados de currículo
+    privados (PII, histórico, dados de contato) pertencentes a outro candidato (User A).
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    O sistema DEVE responder com HTTP 404 (Not Found) em qualquer tentativa de exportação (DOCX ou PDF)
+    sobre um identificador de currículo pertencente a outro usuário, impedindo vazamento e exfiltração de PII.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode consultar o currículo apenas por 'resume_id' na camada de exportação
+    sob o pretexto de simplificar o pipeline de geração de documentos, negligenciando a checagem 'user_id'.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    As rotas de exportação DOCX e PDF acionadas pelo User B contra 'resume_id' do User A
+    devem falhar estritamente com código 404.
+    """
     resume_id = setup_resumes["resume_id"]
     headers_b = setup_resumes["headers_b"]
 

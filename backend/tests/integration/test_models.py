@@ -221,7 +221,23 @@ async def test_application_and_tracker_lifecycle(db_session: AsyncSession) -> No
 
 @pytest.mark.asyncio
 async def test_soft_delete_and_cascades(db_session: AsyncSession) -> None:
-    """Testa marcação de soft delete e verificação de integridade."""
+    """
+    VETOR DE AMEAÇA: CWE-284 (Improper Access Control) & CWE-212 (Improper Removal of Sensitive Info).
+    Exposição ou reutilização indevida de entidades marcadas como logicamente excluídas
+    (soft-deleted), permitindo que contas ou dados desativados permaneçam acessíveis.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    Consultas de entidades em estado ativo devem impor fail-closed via 'deleted_at.is_(None)',
+    garantindo que qualquer busca por entidade soft-deleted resulte em 'None' (404 no nível da API).
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode esquecer de incluir a cláusula 'deleted_at.is_(None)' nas queries
+    de busca de usuários ou recursos, reativando entidades deletadas silenciosamente.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    A consulta com filtro de atividade 'User.deleted_at.is_(None)' deve retornar estritamente None
+    após o preenchimento de 'deleted_at'.
+    """
     user = User(
         firebase_uid="firebase_test_uid_soft",
         email="delete_me@thothcvs.ai",

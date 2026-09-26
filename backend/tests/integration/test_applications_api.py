@@ -283,7 +283,23 @@ async def test_application_tenant_isolation(
     async_client: AsyncClient,
     setup_ats_users: dict,
 ) -> None:
-    """Garante que o User B receba 404 ao tentar acessar ou alterar candidatura do User A."""
+    """
+    VETOR DE AMEAÇA: CWE-639 / CWE-284 & OWASP API1:2023 (Broken Object Level Authorization / IDOR).
+    Um usuário autenticado (User B) tenta inspecionar, adulterar ou deletar dados confidenciais
+    de candidaturas a vagas de outro usuário (User A).
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    O sistema DEVE retornar HTTP 404 (Not Found) para consultas (GET), alterações parciais (PATCH)
+    e deleções (DELETE) quando o identificador do recurso pertencer a outro tenant/usuário,
+    ocultando a existência do recurso e impedindo manipulações trans-tenant.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode simplificar a consulta no repositório buscando apenas por 'id=app_id'
+    sem validar a posse 'user_id=current_user.id', reabrindo vulnerabilidade crítica de IDOR.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    Todas as chamadas do User B para 'app_id' criado por User A devem retornar 404 estrito.
+    """
     headers_a = setup_ats_users["headers_a"]
     headers_b = setup_ats_users["headers_b"]
 

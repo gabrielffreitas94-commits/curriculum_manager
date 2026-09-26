@@ -61,7 +61,21 @@ def test_auth_user_dataclass() -> None:
 
 @pytest.mark.asyncio
 async def test_verify_token_empty_or_whitespace_raises_invalid_token() -> None:
-    """Garante que tokens vazios ou com espaços levantem InvalidTokenError imediatamente."""
+    """Valida rejeição fail-closed quando token é vazio ou composto apenas de espaços.
+
+    VETOR DE AMEAÇA:
+    - CWE-287: Improper Authentication / CWE-306: Missing Authentication.
+    - Impacto: Strings em branco passarem por decodificadores tolerantes, causando bypass.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O adaptador DEVE recusar sumariamente strings em branco levantando InvalidTokenError.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Remover a checagem 'if not token or not token.strip()' delegando para bibliotecas que tratem strings vazias com comportamento indefinido.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Invocação com '' ou '   ' DEVE levantar InvalidTokenError imediatamente.
+    """
     adapter = FirebaseAuthAdapter()
     with pytest.raises(InvalidTokenError, match="Token de autorização vazio"):
         await adapter.verify_token("")
@@ -476,7 +490,21 @@ async def test_verify_token_strictly_enforces_rs256_parameters_in_jwt_decode(
 
 @pytest.mark.asyncio
 async def test_verify_token_malformed_jwt_raises_invalid_token() -> None:
-    """Garante que string JWT inválida ou corrompida levante InvalidTokenError."""
+    """Valida rejeição fail-closed de token JWT malformado ou corrompido.
+
+    VETOR DE AMEAÇA:
+    - CWE-287: Improper Authentication.
+    - Impacto: Cargas úteis corrompidas provocarem exceções não tratadas (HTTP 500) ou comportamento imprevisível.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O adaptador DEVE interceptar falhas estruturais de decodificação e levantar InvalidTokenError com mensagem clara.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Deixar exceções da biblioteca PyJWT vazarem sem normalização para a arquitetura de portas.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Uma string JWT corrompida DEVE levantar InvalidTokenError.
+    """
     adapter = FirebaseAuthAdapter()
     with pytest.raises(InvalidTokenError, match="Token Firebase inválido"):
         await adapter.verify_token("invalid.jwt.payload.string")

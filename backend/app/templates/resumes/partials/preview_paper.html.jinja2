@@ -1,0 +1,136 @@
+<div class="bg-white text-slate-800 shadow-xl border border-slate-200 dark:border-slate-800 rounded-sm p-8 sm:p-12 max-w-[800px] mx-auto min-h-[1050px] font-sans text-xs sm:text-sm leading-relaxed space-y-6 select-text transition-all">
+  <!-- CABEÇALHO ATS -->
+  <header class="border-b-2 border-indigo-600 pb-4 space-y-1">
+    <h1 class="text-2xl font-black text-slate-900 tracking-tight">
+      {{ content.header.full_name or current_user.full_name or 'Nome do Candidato' }}
+    </h1>
+    <div class="text-sm font-bold text-indigo-600">
+      {{ content.header.target_title or 'Título Profissional Pretendido' }}
+    </div>
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 pt-1 font-medium">
+      {% if content.header.email %}
+        <span>📧 {{ content.header.email }}</span>
+      {% endif %}
+      {% if content.header.phone %}
+        <span>📱 {{ content.header.phone }}</span>
+      {% endif %}
+      {% if content.header.location %}
+        <span>📍 {{ content.header.location }}</span>
+      {% endif %}
+      {% if content.header.linkedin_url %}
+        <span>🔗 LinkedIn</span>
+      {% endif %}
+      {% if content.header.github_url %}
+        <span>💻 GitHub</span>
+      {% endif %}
+    </div>
+  </header>
+
+  <!-- RESUMO PROFISSIONAL -->
+  {% if content.professional_summary %}
+  <section class="space-y-1.5">
+    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+      Resumo Profissional
+    </h2>
+    <p class="text-xs text-slate-700 text-justify leading-relaxed whitespace-pre-line">
+      {{ content.professional_summary }}
+    </p>
+  </section>
+  {% endif %}
+
+  <!-- EXPERIÊNCIAS PROFISSIONAIS -->
+  {% if content.selected_experiences or content.experiences %}
+  <section class="space-y-3">
+    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+      Experiência Profissional
+    </h2>
+    <div class="space-y-4">
+      {% for exp in (content.selected_experiences or content.experiences) %}
+      <div class="space-y-1.5">
+        <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+          <div class="font-bold text-slate-900 text-xs sm:text-sm">
+            {{ exp.position_title }} <span class="font-semibold text-slate-600">| {{ exp.company_name }}</span>
+          </div>
+          <div class="text-[11px] text-slate-500 font-mono">
+            {{ exp.start_date }} — {{ exp.end_date or 'Presente' }}
+          </div>
+        </div>
+
+        {% if exp.tech_stack %}
+        <div class="flex flex-wrap gap-1 text-[10px] text-indigo-700 font-medium font-mono">
+          {% for tech in exp.tech_stack %}
+            <span class="bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5">#{{ tech }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if exp.bullet_points or exp.achievements %}
+        <ul class="list-disc list-inside text-xs text-slate-700 space-y-1 pl-1">
+          {% for b in (exp.bullet_points or exp.achievements) %}
+            <li class="leading-normal">{{ b }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- COMPETÊNCIAS TÉCNICAS EM DESTAQUE -->
+  {% if content.skills_highlighted or content.skills %}
+  <section class="space-y-1.5">
+    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+      Competências & Tecnologias
+    </h2>
+    <div class="flex flex-wrap gap-1.5 pt-1">
+      {% for skill in (content.skills_highlighted or content.skills) %}
+        <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-800 border border-slate-200">
+          {{ skill.name if skill.name is defined else skill }}
+        </span>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- FORMAÇÃO ACADÊMICA -->
+  {% if content.education %}
+  <section class="space-y-2">
+    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+      Formação Acadêmica
+    </h2>
+    <div class="space-y-2">
+      {% for edu in content.education %}
+      <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 text-xs">
+        <div>
+          <span class="font-bold text-slate-900">{{ edu.degree }} em {{ edu.field_of_study }}</span>
+          <span class="text-slate-600"> — {{ edu.institution_name }}</span>
+        </div>
+        <div class="text-[11px] text-slate-500 font-mono">
+          {{ edu.start_date }}{% if edu.end_date %} — {{ edu.end_date }}{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- CERTIFICAÇÕES -->
+  {% if content.certifications %}
+  <section class="space-y-1.5">
+    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+      Certificações
+    </h2>
+    <ul class="list-disc list-inside text-xs text-slate-700 space-y-1 pl-1">
+      {% for cert in content.certifications %}
+        <li>
+          <span class="font-semibold text-slate-900">{{ cert.name if cert.name is defined else cert }}</span>
+          {% if cert.issuing_organization is defined and cert.issuing_organization %}
+            <span class="text-slate-500">({{ cert.issuing_organization }})</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>

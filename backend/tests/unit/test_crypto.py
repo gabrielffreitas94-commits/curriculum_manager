@@ -6,7 +6,23 @@ from app.core.crypto import CryptoService, DecryptionError
 
 
 def test_encryption_and_decryption_success() -> None:
-    """Testa o ciclo completo de cifragem e decifragem de uma chave de API."""
+    """
+    VETOR DE AMEAÇA: CWE-327 (Use of a Broken or Risky Cryptographic Algorithm) & CWE-311 (Missing Encryption of Sensitive Data).
+    Armazenamento de segredos críticos (chaves de API do Google Gemini) em texto plano ou com cifras
+    inseguras sem integridade autenticada, expondo credenciais de IA em repouso no banco.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    O serviço DEVE criptografar o texto plano utilizando AES-256-GCM com nonce criptográfico único
+    gerando ciphertext indistinguível, restaurando o texto original estritamente com a mesma chave mestra.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode tentar substituir AES-GCM por uma codificação simples (como Base64)
+    ou modo ECB para contornar problemas de gerenciamento de IV, vazando segredos.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    O payload cifrado difere do texto original, possui expansão de overhead (nonce + tag)
+    e restaura exatamente a chave secreta original após decifragem.
+    """
     # Chave mestra válida de 32 bytes codificada em Base64 (256 bits)
     master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     service = CryptoService(master_key_base64=master_key)
@@ -106,7 +122,22 @@ def test_associated_data_encryption_and_decryption_success() -> None:
 
 
 def test_associated_data_mismatch_fails_authentication() -> None:
-    """Garante que tentar decifrar com associated_data diferente (outro tenant) falhe via AEAD."""
+    """
+    VETOR DE AMEAÇA: CWE-284 (Improper Access Control) & CWE-327 (Cryptographic Issues).
+    Invasor autenticado (Bob) tenta decifrar a chave de API de outro tenant (Alice) reaproveitando
+    o ciphertext no seu próprio contexto de tenant (Cross-Tenant AEAD Tampering).
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    O algoritmo AES-GCM DEVE validar o contexto de dados associados (AAD) e lançar DecryptionError
+    imediatamente se o tenant fornecido na decifragem for diferente do tenant utilizado na cifragem.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Remover o parâmetro 'associated_data' da chamada de decifragem tornaria os dados cifrados
+    intercambiáveis e decifráveis entre diferentes tenants que compartilham a mesma base.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    A tentativa de decifrar payload de Alice com o tenant_b de Bob levanta DecryptionError incondicional.
+    """
     master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     service = CryptoService(master_key_base64=master_key)
 
@@ -122,7 +153,21 @@ def test_associated_data_mismatch_fails_authentication() -> None:
 
 
 def test_associated_data_omitted_fails_when_encrypted_with_aad() -> None:
-    """Garante que tentar decifrar um segredo omitindo os dados associados resulte em erro AEAD."""
+    """
+    VETOR DE AMEAÇA: CWE-353 (Missing Support for Integrity Check) / CWE-284.
+    Tentativa de decifrar credencial omitindo o contexto AAD (passando associated_data=None)
+    para tentar contornar a validação de posse do tenant.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    Se o payload foi cifrado com AAD, a ausência de AAD na decifragem DEVE falhar fail-closed com DecryptionError.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Tratar AAD como valor default nulo opcional sem validar que payloads cifrados com AAD
+    exigem correspondência exata anularia o isolamento criptográfico do tenant.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    Decifrar com 'associated_data=None' payload protegido por AAD levanta DecryptionError.
+    """
     master_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     service = CryptoService(master_key_base64=master_key)
 

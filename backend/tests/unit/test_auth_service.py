@@ -17,7 +17,21 @@ from app.services.auth_service import AuthService
 
 
 def test_auth_service_create_session_jwt() -> None:
-    """Valida emissão correta de token JWT de sessão."""
+    """Valida emissão correta de token JWT de sessão.
+
+    VETOR DE AMEAÇA:
+    - CWE-287: Improper Authentication.
+    - Impacto: Emissão de tokens de sessão sem controle de versão distribuído.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O token JWT emitido DEVE conter claims essenciais ('sub', 'email', 'iss', 'ver', 'exp', 'iat').
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Omitir o claim 'ver' desativaria a invalidação de sessões zumbis no logout.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - O payload decodificado DEVE conter payload['ver'] == 1 por padrão.
+    """
     service = AuthService(db=MagicMock(spec=AsyncSession))
     token = service.create_session_jwt(uid="user_uid_123", email="user@teste.com")
 
@@ -25,6 +39,7 @@ def test_auth_service_create_session_jwt() -> None:
     assert payload["sub"] == "user_uid_123"
     assert payload["email"] == "user@teste.com"
     assert payload["iss"] == "thothcvs-web"
+    assert payload["ver"] == 1
     assert "exp" in payload
     assert "iat" in payload
 
@@ -221,3 +236,38 @@ async def test_auth_service_get_authenticated_user_database_error_fail_closed() 
 
     user = await service.get_authenticated_user(token)
     assert user is None
+
+
+@pytest.mark.asyncio
+async def test_auth_service_revoke_session_increments_token_version() -> None:
+    """Valida incremento de token_version e commit ao revogar sessão de usuário."""
+    db_mock = MagicMock(spec=AsyncSession)
+    db_mock.commit = AsyncMock()
+    db_mock.refresh = AsyncMock()
+    user = User(id=uuid.uuid4(), firebase_uid="rev_user", email="rev@test.com", token_version=1)
+
+    service = AuthService(db=db_mock)
+    await service.revoke_session(user)
+
+    assert user.token_version == 2
+    db_mock.commit.assert_awaited_once()
+    db_mock.refresh.assert_awaited_once_with(user)
+
+
+@pytest.mark.asyncio
+async def test_auth_service_get_authenticated_user_mismatched_token_version_returns_none() -> None:
+    """Garante rejeição fail-closed quando claim ver diverge de user.token_version."""
+    db_mock = MagicMock(spec=AsyncSession)
+    user = User(id=uuid.uuid4(), firebase_uid="rev_user_2", email="rev2@test.com", token_version=3)
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = user
+    db_mock.execute = AsyncMock(return_value=mock_res)
+
+    service = AuthService(db=db_mock)
+    # Token emitido com token_version=1 antigo
+    stale_token = service.create_session_jwt(
+        uid="rev_user_2", email="rev2@test.com", token_version=1
+    )
+
+    resolved_user = await service.get_authenticated_user(stale_token)
+    assert resolved_user is None

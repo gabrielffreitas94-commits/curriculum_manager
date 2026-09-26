@@ -1,0 +1,179 @@
+<!-- Modal Acessível de Revisão da Extração de Currículo (Zero Alucinação) -->
+<div 
+    id="import-review-modal-backdrop" 
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="import-modal-title"
+    tabindex="-1">
+    
+    <div class="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        
+        <!-- Cabeçalho do Modal -->
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </span>
+                <div>
+                    <h3 id="import-modal-title" class="text-base font-bold text-slate-900 dark:text-slate-100">
+                        Currículo Analisado com Sucesso
+                    </h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Fidelidade factual: 100% dos dados foram extraídos exclusivamente do seu documento.
+                    </p>
+                </div>
+            </div>
+            
+            <button 
+                type="button" 
+                onclick="closeModal()" 
+                aria-label="Fechar modal de revisão"
+                class="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Conteúdo do Modal (Scrollável) -->
+        <div class="p-6 overflow-y-auto space-y-6 text-sm">
+            
+            <!-- Resumo dos Dados Pessoais Extraídos -->
+            {% if parsed_dto.personal_data %}
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                    Identificação & Contato
+                </h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                        <span class="text-slate-500">Nome:</span>
+                        <strong class="text-slate-900 dark:text-slate-100 ml-1">{{ parsed_dto.personal_data.full_name or "Não especificado" }}</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Título/Cargo:</span>
+                        <strong class="text-slate-900 dark:text-slate-100 ml-1">{{ parsed_dto.personal_data.headline or "Não especificado" }}</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Telefone:</span>
+                        <span class="text-slate-700 dark:text-slate-300 ml-1">{{ parsed_dto.personal_data.phone or "—" }}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Localização:</span>
+                        <span class="text-slate-700 dark:text-slate-300 ml-1">{{ parsed_dto.personal_data.location or "—" }}</span>
+                    </div>
+                    {% if parsed_dto.personal_data.linkedin_url %}
+                    <div class="col-span-2 truncate">
+                        <span class="text-slate-500">LinkedIn:</span>
+                        <a href="{{ parsed_dto.personal_data.linkedin_url }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline ml-1">
+                            {{ parsed_dto.personal_data.linkedin_url }}
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Resumo das Entidades Extraídas -->
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.experiences | length }}</span>
+                    <span class="text-[10px] text-slate-500">Experiências</span>
+                </div>
+                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.educations | length }}</span>
+                    <span class="text-[10px] text-slate-500">Formações</span>
+                </div>
+                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.skills | length }}</span>
+                    <span class="text-[10px] text-slate-500">Skills</span>
+                </div>
+                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.languages | length }}</span>
+                    <span class="text-[10px] text-slate-500">Idiomas</span>
+                </div>
+                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.certifications | length }}</span>
+                    <span class="text-[10px] text-slate-500">Certificações</span>
+                </div>
+                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.projects | length }}</span>
+                    <span class="text-[10px] text-slate-500">Projetos</span>
+                </div>
+            </div>
+
+            <!-- Lista de Experiências Encontradas -->
+            {% if parsed_dto.experiences %}
+            <div>
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                    Experiências Identificadas
+                </h4>
+                <div class="space-y-2">
+                    {% for exp in parsed_dto.experiences %}
+                    <div class="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
+                        <div class="flex items-center justify-between">
+                            <span class="font-semibold text-slate-900 dark:text-slate-100">{{ exp.position_title }}</span>
+                            <span class="text-xs text-slate-500 font-mono">{{ exp.start_date }} → {{ exp.end_date or ("Atual" if exp.is_current else "—") }}</span>
+                        </div>
+                        <div class="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                            {{ exp.company_name }}{% if exp.location %} · {{ exp.location }}{% endif %}
+                        </div>
+                        {% if exp.tech_stack %}
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            {% for tech in exp.tech_stack %}
+                            <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                {{ tech }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Lista de Skills Encontradas -->
+            {% if parsed_dto.skills %}
+            <div>
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                    Competências Mapeadas
+                </h4>
+                <div class="flex flex-wrap gap-1.5">
+                    {% for skill in parsed_dto.skills %}
+                    <span class="text-xs px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-medium">
+                        {{ skill.name }}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+
+        <!-- Rodapé com Ações -->
+        <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850/50 flex items-center justify-end gap-3">
+            <button 
+                type="button" 
+                onclick="closeModal()" 
+                class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                Descartar
+            </button>
+            
+            <form hx-post="/profile/confirm-import" hx-target="#main-content" hx-indicator="#confirm-spinner">
+                <input type="hidden" name="payload" value='{{ serialized_dto }}'>
+                <button 
+                    type="submit" 
+                    id="confirm-import-btn"
+                    onclick="closeModal()"
+                    class="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md hover:shadow-indigo-500/20 transition-all cursor-pointer">
+                    <span id="confirm-spinner" class="htmx-indicator animate-spin">⟳</span>
+                    Confirmar e Integrar ao Dossiê
+                </button>
+            </form>
+        </div>
+
+    </div>
+</div>
