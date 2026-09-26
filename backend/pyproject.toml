@@ -24,6 +24,7 @@ dependencies = [
     "slowapi>=0.1.10",
     "structlog>=24.4.0",
     "python-multipart>=0.0.20",
+    "pypdf>=5.0.0",
 ]
 
 [project.optional-dependencies]
