@@ -53,7 +53,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
             response.headers["Strict-Transport-Security"] = hsts_val
             response.headers["Content-Security-Policy"] = (
-                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https:; "
+                "font-src 'self' data:; "
+                "connect-src 'self'; "
+                "frame-ancestors 'none'; "
+                "base-uri 'self'"
             )
         else:
             response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"

@@ -450,7 +450,23 @@ async def test_resume_preview_page_authenticated_renders(async_client: AsyncClie
 
 @pytest.mark.asyncio
 async def test_resume_preview_page_not_found_returns_404(async_client: AsyncClient) -> None:
-    """Valida que acessar currículo inexistente ou de outro usuário resulta em 404."""
+    """
+    VETOR DE AMEAÇA: CWE-639 / CWE-284 & OWASP API1:2023 (Broken Object Level Authorization / IDOR).
+    Um usuário autenticado tenta inspecionar ou acessar a tela de splitview e pré-visualização de currículo
+    pertencente a outro usuário através de enumeração ou injeção de UUID.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A aplicação DEVE retornar HTTP 404 (Not Found) quando o currículo não for encontrado para o 'user_id'
+    autenticado na sessão web, impedindo vazamento de existência ou visualização de dados privados.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode substituir a consulta com 'user_id' por uma busca direta apenas por 'id',
+    permitindo visualização trans-tenant inadvertida de currículos entre candidatos.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    Quando o resultado da busca 'user_id + id' for nulo, a rota GET /resumes/{uuid}/preview
+    deve falhar incondicionalmente com HTTP 404.
+    """
     async_client.cookies.set("session_token", "valid_session_token")
 
     mock_db_result = MagicMock()
@@ -579,7 +595,23 @@ async def test_resume_save_content_persists_changes(async_client: AsyncClient) -
 
 @pytest.mark.asyncio
 async def test_resume_save_content_not_found_returns_404(async_client: AsyncClient) -> None:
-    """Valida retorno 404 ao tentar salvar currículo não existente."""
+    """
+    VETOR DE AMEAÇA: CWE-639 / CWE-284 & OWASP API1:2023 (Broken Object Level Authorization / IDOR).
+    Um invasor autenticado tenta adulterar ou sobrescrever o conteúdo de currículo pertencente
+    a outro usuário através do endpoint web POST /resumes/{uuid}/save.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    O sistema DEVE responder com HTTP 404 (Not Found) quando o currículo alvo não pertencer ao
+    usuário autenticado na sessão corrente, bloqueando qualquer mutação em dados alheios.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Atualizar o registro diretamente com base unicamente no identificador 'uuid' sem a restrição
+    'Resume.user_id == current_user.id' permitiria ataques de adulteração arbitrária de dados.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    A rota POST /resumes/{uuid}/save retorna status 404 estrito quando o currículo não é localizado
+    no escopo do usuário ativo.
+    """
     async_client.cookies.set("session_token", "valid_session_token")
     mock_db_result = MagicMock()
     mock_db_result.scalar_one_or_none.return_value = None

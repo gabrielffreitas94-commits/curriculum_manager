@@ -4,6 +4,8 @@ Aplica validação estrita de Magic Bytes, limites de tamanho de payload (CWE-40
 e rejeição fail-closed contra arquivos executáveis disfarçados (CWE-434).
 """
 
+import io
+import zipfile
 from pathlib import Path
 
 
@@ -25,6 +27,10 @@ class FileContentMismatchError(FileSecurityError):
 
 # Limite máximo padrão: 5 MB
 MAX_RESUME_FILE_SIZE_BYTES: int = 5 * 1024 * 1024
+
+# Limites defensivos contra DOCX Zip Bomb (CWE-409)
+MAX_DOCX_UNCOMPRESSED_SIZE_BYTES: int = 50 * 1024 * 1024  # 50 MB
+MAX_DOCX_COMPRESSION_RATIO: float = 50.0  # Razão máxima tolerada 50:1
 
 # Magic bytes conhecidos
 PDF_MAGIC_BYTES: bytes = b"%PDF-"
@@ -93,6 +99,27 @@ def validate_resume_file(
             "O conteúdo do arquivo não corresponde a um documento Word (.docx) válido "
             "(Magic Bytes inválidos)."
         )
+
+    # Validação anti-Zip Bomb (CWE-409) para arquivos DOCX
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as zf:
+            total_uncompressed = 0
+            for item in zf.infolist():
+                total_uncompressed += item.file_size
+                if total_uncompressed > MAX_DOCX_UNCOMPRESSED_SIZE_BYTES:
+                    raise FileTooLargeError(
+                        "O arquivo DOCX expandido excede o limite máximo permitido "
+                        "de segurança (potencial Zip Bomb)."
+                    )
+            compressed_len = max(len(file_bytes), 1)
+            if (total_uncompressed / compressed_len) > MAX_DOCX_COMPRESSION_RATIO:
+                raise FileTooLargeError(
+                    "O arquivo DOCX possui razão de compressão anormalmente alta "
+                    "(potencial Zip Bomb)."
+                )
+    except zipfile.BadZipFile as exc:
+        raise FileContentMismatchError("O arquivo DOCX não é um arquivo ZIP válido.") from exc
+
     return MIME_DOCX, ".docx"
 
 

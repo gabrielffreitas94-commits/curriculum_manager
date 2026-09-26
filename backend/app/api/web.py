@@ -21,6 +21,7 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from jinja2 import select_autoescape
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +52,7 @@ from app.core.database import get_db_session
 from app.core.file_security import FileSecurityError, validate_resume_file
 from app.core.grounding_audit import GroundingAuditEngine
 from app.core.logging import get_logger
+from app.core.rate_limit import limiter
 from app.core.telemetry import set_user_id
 from app.core.url_scraper import URLScraperError
 from app.domain.models import Application, GeneratedResume, User, UserSettings
@@ -68,8 +70,11 @@ from app.services.user_service import UserService
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.autoescape = select_autoescape(["html", "xml", "jinja2"])
+
 
 logger = get_logger("web_router")
+
 
 router = APIRouter(tags=["Web UI"])
 
@@ -123,7 +128,8 @@ async def login_modal(request: Request) -> HTMLResponse:
 
 
 @router.get("/auth/login/google", status_code=status.HTTP_302_FOUND)
-async def login_google_redirect() -> Response:
+@limiter.limit("10/minute")
+async def login_google_redirect(request: Request) -> Response:
     """Redireciona o navegador do usuário para o endpoint de autorização do Google com state."""
     state = secrets.token_urlsafe(32)
     auth_url = google_oauth_adapter.get_authorization_url(state=state)
@@ -142,6 +148,7 @@ async def login_google_redirect() -> Response:
 
 
 @router.get("/auth/callback/google")
+@limiter.limit("10/minute")
 async def google_callback(
     request: Request,
     code: str | None = None,
@@ -205,8 +212,14 @@ async def google_callback(
 
 
 @router.post("/auth/logout", response_class=HTMLResponse, status_code=status.HTTP_200_OK)
-async def logout(request: Request) -> Response:
-    """Encerra a sessão Web do usuário removendo o cookie session_token."""
+async def logout(
+    request: Request,
+    current_user: User | None = Depends(get_authenticated_web_user),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> Response:
+    """Encerra a sessão Web do usuário removendo o cookie e invalidando no servidor."""
+    if current_user is not None:
+        await auth_service.revoke_session(current_user)
     logger.info("web_user_logged_out")
     response = HTMLResponse(content="", status_code=status.HTTP_200_OK)
     response.delete_cookie(key="session_token", path="/")
@@ -241,6 +254,7 @@ async def profile_page(
 
 
 @router.post("/profile/import-cv", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def import_cv_upload(
     request: Request,
     file: UploadFile = File(...),
@@ -381,7 +395,9 @@ async def new_resume_page(
 
 
 @router.post("/resumes/scrape-job-url", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def scrape_job_url(
+    request: Request,
     url: str = Form(...),
     current_user: User | None = Depends(get_authenticated_web_user),
     job_ingest_service: JobIngestService = Depends(get_job_ingest_service),
@@ -431,7 +447,9 @@ async def scrape_job_url(
 
 
 @router.post("/resumes/upload-job-doc", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def upload_job_doc(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User | None = Depends(get_authenticated_web_user),
     job_ingest_service: JobIngestService = Depends(get_job_ingest_service),
@@ -481,6 +499,7 @@ async def upload_job_doc(
 
 
 @router.post("/resumes/analyze-match", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def analyze_match(
     request: Request,
     job_description: str = Form(""),
@@ -516,6 +535,7 @@ async def analyze_match(
 
 
 @router.post("/resumes/copilot-chat", response_class=HTMLResponse)
+@limiter.limit("20/minute")
 async def copilot_chat_interaction(
     request: Request,
     message: str = Form(...),
@@ -595,7 +615,9 @@ async def copilot_chat_interaction(
 
 
 @router.post("/resumes/generate-custom")
+@limiter.limit("5/minute")
 async def generate_custom_resume(
+    request: Request,
     job_description: str = Form(...),
     prompt_skill_slug: str = Form("google-xyz"),
     current_user: User | None = Depends(get_authenticated_web_user),
@@ -1271,6 +1293,7 @@ async def settings_save_gemini_key(
 
 
 @router.post("/settings/gemini-key/test", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def settings_test_gemini_key(
     request: Request,
     gemini_api_key: str = Form(""),

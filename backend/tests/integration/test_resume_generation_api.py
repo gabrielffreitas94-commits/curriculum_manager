@@ -181,7 +181,22 @@ async def test_generate_resume_hallucination_rejected(
     async_client: AsyncClient,
     setup_resume_user: dict,
 ) -> None:
-    """Garante que a rota retorne 422 caso a IA forje empresas não cadastradas."""
+    """
+    VETOR DE AMEAÇA: OWASP LLM09:2025 (Misinformation) & OWASP LLM01:2025 (Prompt Injection).
+    O modelo de linguagem (Gemini) forja ou alucina empresas e cargos que não constam
+    no Dossiê Mestre do candidato, comprometendo a integridade e veracidade do currículo.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A aplicação DEVE validar estritamente o grounding das entidades geradas contra o repositório
+    do candidato e rejeitar a operação retornando HTTP 422 (Unprocessable Entity) de forma fail-closed.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode remover a conferência estrita de 'company_name' para evitar erros
+    quando o modelo sintetiza nomes ligeiramente diferentes, permitindo alucinação descontrolada.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    Retorno da IA contendo empresa inexistente no dossiê resulta obrigatoriamente em HTTP 422.
+    """
     headers = setup_resume_user["headers"]
 
     hallucinated_payload = FullGeneratedResumePayload(

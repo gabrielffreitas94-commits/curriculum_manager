@@ -140,8 +140,23 @@ async def test_login_google_redirect(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_google_callback_error_or_canceled(async_client: AsyncClient):
-    """Valida redirecionamento quando o usuário cancela ou ocorre erro no consentimento."""
+async def test_google_callback_error_or_canceled(async_client: AsyncClient) -> None:
+    """Valida redirecionamento seguro quando o usuário cancela ou ocorre erro no consentimento OAuth.
+
+    VETOR DE AMEAÇA:
+    - CWE-287: Improper Authentication.
+    - Impacto: Tentativas de burlar o fluxo OAuth submetendo respostas de erro ou omitindo código de autorização.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - O callback DEVE interceptar erros de consentimento e ausência de código, redirecionando
+      para a página inicial com o parâmetro 'auth_error=google_denied' e deletando o cookie oauth_state.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Tentar trocar código inexistente com o provedor OAuth, gerando erros 500 no backend.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - Requisições com erro ou sem código DEVEM redirecionar para /?auth_error=google_denied com status 302.
+    """
     # Com parâmetro error
     res_err = await async_client.get(
         "/auth/callback/google?error=access_denied", follow_redirects=False
@@ -289,7 +304,24 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
 
 
 def test_set_session_cookie_environment_behavior(monkeypatch):
-    """Valida a emissão segura de cookies dependente do ambiente (Secure flag em prod/staging)."""
+    """
+    VETOR DE AMEAÇA: CWE-614 (Sensitive Cookie Without 'Secure' Attribute) & CWE-1004 (Sensitive Cookie Without 'HttpOnly' Flag).
+    Interceptação Man-in-the-Middle (MitM) e roubo de sessão via XSS/rede não criptografada se flags
+    HttpOnly, Secure ou SameSite forem omitidas em produção/staging.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    O cookie de sessão 'session_token' DEVE conter impreterivelmente 'HttpOnly' e 'SameSite=lax' em qualquer
+    ambiente, e OBRIGATORIAMENTE conter a flag 'Secure' em ambientes de 'production' e 'staging'.
+    Em 'development', a flag 'Secure' é desativada exclusivamente para suportar testes locais via HTTP.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode tentar simplificar a emissão de cookies padronizando 'secure=False'
+    para evitar erros de sessão em testes manuais de homologação, expondo tokens de sessão em produção.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    O cabeçalho 'Set-Cookie' resultante para 'production' e 'staging' deve conter as substrings 'Secure'
+    e 'HttpOnly', e a ausência da flag 'Secure' é restrita estritamente ao ambiente 'development'.
+    """
     # 1. Em desenvolvimento/local: secure deve ser False para funcionar em http://localhost
     monkeypatch.setattr(settings, "ENVIRONMENT", "development")
     res_dev = Response()

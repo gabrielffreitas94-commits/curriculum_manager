@@ -5,6 +5,7 @@ BYOK (Bring Your Own Key) e injeção do contexto factual do candidato.
 """
 
 import json
+import re
 import time
 from typing import Any
 
@@ -24,12 +25,15 @@ from app.ports.ai_port import (
 
 logger = get_logger(__name__)
 
+TAG_INJECTION_PATTERN = re.compile(r"<\s*/?\s*untrusted_job_posting\s*>", flags=re.IGNORECASE)
+
 
 def sanitize_untrusted_job_description(text: str) -> str:
     """Higieniza o texto não confiável de anúncios de vagas contra escape de delimitadores.
 
     Remove ou neutraliza tags que poderiam fechar precocemente o bloco de contexto não
-    confiável (<untrusted_job_posting>) e remove caracteres de controle nulos perigosos.
+    confiável (<untrusted_job_posting>) de forma case-insensitive e flexível a espaços,
+    e remove caracteres de controle nulos perigosos.
 
     Args:
         text: Texto bruto da descrição da oportunidade de emprego.
@@ -40,7 +44,7 @@ def sanitize_untrusted_job_description(text: str) -> str:
     if not text:
         return ""
 
-    sanitized = text.replace("</untrusted_job_posting>", "").replace("<untrusted_job_posting>", "")
+    sanitized = TAG_INJECTION_PATTERN.sub("", text)
     sanitized = sanitized.replace("\x00", "").strip()
     return sanitized
 

@@ -85,9 +85,15 @@ async def test_security_headers_in_production(monkeypatch: pytest.MonkeyPatch) -
         assert headers.get("x-content-type-options") == "nosniff"
         assert headers.get("x-frame-options") == "DENY"
         assert headers.get("strict-transport-security") == "max-age=31536000; includeSubDomains"
-        assert (
-            headers.get("content-security-policy")
-            == "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+        assert headers.get("content-security-policy") == (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'"
         )
 
 

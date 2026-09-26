@@ -4,10 +4,13 @@ Implementa guardrails anti-regressão estritos contra upload de arquivos malicio
 disfarçados e exaustão de memória/DoS (CWE-434 / CWE-400 / OWASP A04).
 """
 
+import io
+import zipfile
+from unittest.mock import patch
+
 import pytest
 
 from app.core.file_security import (
-    DOCX_MAGIC_BYTES,
     MAX_RESUME_FILE_SIZE_BYTES,
     MIME_DOCX,
     MIME_PDF,
@@ -137,8 +140,44 @@ def test_validate_resume_file_success_pdf() -> None:
 
 
 def test_validate_resume_file_success_docx() -> None:
-    """Valida sucesso na validação de um arquivo Word DOCX autêntico com magic bytes PK."""
-    valid_docx_bytes = DOCX_MAGIC_BYTES + b"archive content..."
+    """Valida sucesso na validação de um arquivo Word DOCX autêntico com estrutura ZIP válida."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
+        zf.writestr("[Content_Types].xml", b'<?xml version="1.0" encoding="UTF-8"?><Types></Types>')
+        zf.writestr(
+            "word/document.xml", b'<?xml version="1.0" encoding="UTF-8"?><w:document></w:document>'
+        )
+    valid_docx_bytes = buf.getvalue()
     mime, ext = validate_resume_file(file_bytes=valid_docx_bytes, filename="curriculo_maria.DOCX")
     assert mime == MIME_DOCX
     assert ext == ".docx"
+
+
+def test_guardrail_reject_docx_uncompressed_size_limit() -> None:
+    """Valida rejeição de arquivos DOCX cujo tamanho descomprimido excede 50MB.
+
+    VETOR DE AMEAÇA:
+    - CWE-409: Improper Handling of Highly Compressed Data (Zip Bomb / Decompression Bomb).
+    - Impacto Potencial: Exaustão de memória da aplicação e DoS no servidor.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - Se a soma dos tamanhos descompactados dos arquivos internos ultrapassar MAX_DOCX_UNCOMPRESSED_SIZE_BYTES,
+      lançar FileTooLargeError imediatamente.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Validar apenas o tamanho do payload comprimido sem inspecionar o header de descompressão dos arquivos internos.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - DOCX cujo somatório ultrapasse 50 MB lança FileTooLargeError com mensagem explicativa.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
+        zf.writestr("[Content_Types].xml", b'<?xml version="1.0" encoding="UTF-8"?><Types></Types>')
+
+    mock_info = zipfile.ZipInfo("[Content_Types].xml")
+    mock_info.file_size = 55 * 1024 * 1024  # 55MB > 50MB
+    with (
+        patch("zipfile.ZipFile.infolist", return_value=[mock_info]),
+        pytest.raises(FileTooLargeError, match="excede o limite máximo permitido de segurança"),
+    ):
+        validate_resume_file(file_bytes=buf.getvalue(), filename="huge_docx.docx")

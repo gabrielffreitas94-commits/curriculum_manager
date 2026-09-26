@@ -643,7 +643,23 @@ async def test_settings_update_language_creates_new_settings_if_none(
 
 @pytest.mark.asyncio
 async def test_settings_export_data_json_portability(async_client: AsyncClient) -> None:
-    """Valida conformidade com portabilidade de dados da LGPD (Art. 18, II e V)."""
+    """
+    VETOR DE AMEAÇA: LGPD Art. 18, II e V / CWE-200 (Information Exposure).
+    Violação de direitos do titular de dados ou vazamento cruzado de dados de terceiros
+    durante a geração e download do arquivo de portabilidade de dados pessoais.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A rota DEVE gerar um documento JSON estruturado contendo estritamente os dados do titular
+    autenticado na sessão web corrente, garantindo total isolamento multi-tenant.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode relaxar os filtros da extração do dossiê ou incluir chaves de API
+    e credenciais privadas no JSON exportado, violando o princípio da minimização.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    O download em formato JSON possui 'content-disposition' de anexo e contém com fidelidade
+    as informações do dossiê do usuário autenticado.
+    """
     async_client.cookies.set("session_token", "valid_session_token")
 
     from types import SimpleNamespace
@@ -726,7 +742,23 @@ async def test_settings_export_data_json_portability(async_client: AsyncClient) 
 
 @pytest.mark.asyncio
 async def test_settings_delete_account_lgpd_erasure(async_client: AsyncClient) -> None:
-    """Valida eliminação definitiva de conta e dados com revogação de cookie de sessão."""
+    """
+    VETOR DE AMEAÇA: LGPD Art. 18, VI / CWE-212 (Improper Removal of Sensitive Information).
+    Falha na eliminação completa de dados pessoais ou persistência indevida de sessão após
+    solicitação de encerramento e exclusão de conta pelo titular.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A rota DEVE acionar a cascata transacional de exclusão definitiva no banco de dados e provedor
+    de autenticação, limpando o cookie de sessão e redirecionando o usuário.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Um desenvolvedor ou IA pode simplificar a rota executando apenas logout superficial
+    sem orquestrar o expurgo dos registros e credenciais do usuário.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    A chamada ao endpoint invoca 'delete_user_account(MOCK_WEB_USER)' de forma assíncrona
+    e redireciona para a home com mensagem de conta excluída.
+    """
     async_client.cookies.set("session_token", "valid_session_token")
 
     with (

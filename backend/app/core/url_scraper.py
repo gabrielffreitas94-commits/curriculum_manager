@@ -88,14 +88,37 @@ def is_safe_ip(ip_str: str) -> bool:
     return not (ip.version == 4 and ip in _CGNAT_NETWORK)
 
 
-def validate_target_url(url: str) -> tuple[str, str, int]:
+class ValidatedUrlTarget(tuple[str, str, int]):
+    """Tupla de validação de URL contendo esquema, hostname, porta e o IP seguro pré-resolvido.
+
+    Herda de tuple para manter compatibilidade estrita com desempacotamento de 3 elementos:
+    scheme, hostname, port = validate_target_url(url)
+    """
+
+    scheme: str
+    hostname: str
+    port: int
+    resolved_ip: str
+
+    def __new__(
+        cls, scheme: str, hostname: str, port: int, resolved_ip: str
+    ) -> "ValidatedUrlTarget":
+        instance = super().__new__(cls, (scheme, hostname, port))
+        instance.scheme = scheme
+        instance.hostname = hostname
+        instance.port = port
+        instance.resolved_ip = resolved_ip
+        return instance
+
+
+def validate_target_url(url: str) -> ValidatedUrlTarget:
     """Valida sintaxe da URL e resolve seu DNS verificando se todos os IPs são seguros.
 
     Args:
         url: URL alvo informada pelo usuário.
 
     Returns:
-        tuple[str, str, int]: (esquema, hostname, porta)
+        ValidatedUrlTarget: Tupla (esquema, hostname, porta) com o atributo resolved_ip.
 
     Raises:
         SSRFProtectionError: Se o esquema não for http/https ou o host resolver para IP inseguro.
@@ -127,6 +150,7 @@ def validate_target_url(url: str) -> tuple[str, str, int]:
         raise SSRFProtectionError(f"Nenhum endereço IP retornado para '{hostname}'.")
 
     # Avaliação fail-closed: TODOS os IPs resolvidos devem ser seguros
+    safe_ips: list[str] = []
     for addr_info in addr_infos:
         ip_candidate = str(addr_info[4][0])
         if not is_safe_ip(ip_candidate):
@@ -140,8 +164,14 @@ def validate_target_url(url: str) -> tuple[str, str, int]:
                 f"Acesso bloqueado: o destino '{hostname}' resolve para endereço "
                 f"restrito ({ip_candidate})."
             )
+        safe_ips.append(ip_candidate)
 
-    return scheme, hostname, port
+    return ValidatedUrlTarget(
+        scheme=scheme,
+        hostname=hostname,
+        port=port,
+        resolved_ip=safe_ips[0],
+    )
 
 
 class _SafeTextHTMLParser(HTMLParser):
@@ -243,7 +273,15 @@ async def safe_fetch_url(
     try:
         while True:
             # 1. Validação estrita de IP antes de cada salto
-            validate_target_url(current_url)
+            target = validate_target_url(current_url)
+            resolved_ip = getattr(target, "resolved_ip", "0.0.0.0")
+            target_hostname = getattr(target, "hostname", target[1] if len(target) > 1 else "")
+            logger.info(
+                "safe_fetch_url_target_resolved",
+                target_url=current_url,
+                resolved_ip=resolved_ip,
+                hostname=target_hostname,
+            )
 
             try:
                 # Requisição com streaming para validar tamanho em tempo real

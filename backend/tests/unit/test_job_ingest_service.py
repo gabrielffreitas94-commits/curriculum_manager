@@ -4,6 +4,7 @@ Valida a ingestão segura de documentos (.pdf, .docx) e scraping de URLs com
 blindagem contra SSRF (CWE-918), DoS por exaustão (CWE-400) e arquivos maliciosos (CWE-434).
 """
 
+import zipfile
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
@@ -130,15 +131,31 @@ class TestJobIngestDocument:
         assert "não contém texto legível ou extraível" in exc_info.value.detail
 
     def test_extract_text_corrupted_document_raises_error(self) -> None:
-        """Garante tratamento gracioso quando o documento está corrompido."""
+        """Garante tratamento gracioso quando a biblioteca de parsing falha."""
         service = JobIngestService()
-        # Header de zip válido (PK\x03\x04), mas dados corrompidos
+        valid_docx = BytesIO()
+        with zipfile.ZipFile(valid_docx, "w") as zf:
+            zf.writestr("[Content_Types].xml", "<Types/>")
+            zf.writestr("word/document.xml", "<document/>")
+
+        with patch(
+            "app.services.job_ingest_service.Document",
+            side_effect=Exception("Estrutura corrompida"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                service.extract_text_from_document(valid_docx.getvalue(), "corrupted.docx")
+            assert exc_info.value.status_code == 400
+            assert "Não foi possível processar o documento enviado" in exc_info.value.detail
+
+    def test_extract_text_security_validation_failure_raises_400(self) -> None:
+        """Garante que falhas de validação de segurança de arquivo retornem HTTP 400."""
+        service = JobIngestService()
         corrupted_docx = b"PK\x03\x04" + b"\x00" * 50
 
         with pytest.raises(HTTPException) as exc_info:
             service.extract_text_from_document(corrupted_docx, "corrupted.docx")
         assert exc_info.value.status_code == 400
-        assert "Não foi possível processar o documento enviado" in exc_info.value.detail
+        assert "O arquivo DOCX não é um arquivo ZIP válido." in exc_info.value.detail
 
 
 class TestJobIngestUrl:

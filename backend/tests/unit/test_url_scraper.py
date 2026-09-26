@@ -270,7 +270,22 @@ class TestSafeFetchUrlAndHtmlParsing:
 
     @pytest.mark.asyncio
     async def test_safe_fetch_url_too_many_redirects(self) -> None:
-        """Testa prevenção de loop infinito de redirecionamentos."""
+        """
+        VETOR DE AMEAÇA: CWE-400 (Uncontrolled Resource Consumption) & CWE-918 (SSRF).
+        Servidor malicioso induz 'safe_fetch_url' a seguir sequências infinitas ou cíclicas
+        de redirecionamento HTTP (loop 301/302), provocando exaustão de memória e conexões assíncronas.
+
+        COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+        O mecanismo de fetch DEVE contabilizar rigorosamente cada redirecionamento e abortar
+        lançando 'SSRFProtectionError' assim que a contagem atingir o limiar 'max_redirects'.
+
+        RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+        Um desenvolvedor ou IA pode substituir o loop controlado por 'follow_redirects=True' nativo
+        sem impor validação prévia de IP e limite estrito em cada salto.
+
+        PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+        Tentativa de scraping em endpoint com loop infinito lança 'SSRFProtectionError' ao atingir max_redirects.
+        """
         mock_transport = httpx.MockTransport(
             lambda request: httpx.Response(
                 302, headers={"Location": "https://jobs.example.com/loop"}
