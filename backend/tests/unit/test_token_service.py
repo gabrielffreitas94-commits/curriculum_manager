@@ -256,4 +256,3 @@ async def test_get_user_token_usage_includes_daily_limit_and_reset_metadata(
     assert data["reset_time_utc"] == "00:00 UTC"
     assert data["seconds_until_reset"] >= 0
     assert "h " in data["formatted_time_until_reset"]
-

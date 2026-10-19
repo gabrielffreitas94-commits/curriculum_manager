@@ -283,7 +283,9 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
         assert res_home.headers["location"] in ("/profile", "/applications")
 
         # Acessa o destino do redirecionamento com a sessão autenticada
-        res_dest = await async_client.get(res_home.headers["location"], cookies=res_callback.cookies)
+        res_dest = await async_client.get(
+            res_home.headers["location"], cookies=res_callback.cookies
+        )
         assert res_dest.status_code == 200
         assert "Real Google User" in res_dest.text
         assert "logout-btn" in res_dest.text

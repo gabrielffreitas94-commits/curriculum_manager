@@ -50,7 +50,9 @@ async def test_guardrail_500_internal_error_never_leaks_sensitive_details_json()
 
     @app.get("/test-unhandled-crash")
     async def crash_endpoint() -> None:
-        raise RuntimeError("Database connection failed: postgresql://admin:supersecret@10.0.1.50:5432/thothdb")
+        raise RuntimeError(
+            "Database connection failed: postgresql://admin:supersecret@10.0.1.50:5432/thothdb"
+        )
 
     async with AsyncClient(
         transport=ASGITransport(app=app, raise_app_exceptions=False),
@@ -63,7 +65,10 @@ async def test_guardrail_500_internal_error_never_leaks_sensitive_details_json()
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         data = response.json()
-        assert data["detail"] == "Ocorreu um erro interno no servidor. Por favor, tente novamente mais tarde."
+        assert (
+            data["detail"]
+            == "Ocorreu um erro interno no servidor. Por favor, tente novamente mais tarde."
+        )
         assert "supersecret" not in response.text
         assert "10.0.1.50" not in response.text
         assert "postgresql" not in response.text
@@ -149,7 +154,10 @@ async def test_guardrail_5xx_http_exception_sanitized() -> None:
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         data = response.json()
-        assert data["detail"] == "Ocorreu um erro interno no servidor. Por favor, tente novamente mais tarde."
+        assert (
+            data["detail"]
+            == "Ocorreu um erro interno no servidor. Por favor, tente novamente mais tarde."
+        )
         assert "AES-GCM" not in response.text
         assert "key_id" not in response.text
 
@@ -242,7 +250,9 @@ async def test_guardrail_auth_exceptions_never_leak_jwt_internals() -> None:
     creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="attacker_token")
 
     with patch("app.api.v1.deps.auth_adapter.verify_token") as mock_verify:
-        mock_verify.side_effect = InvalidTokenError("JWT signature failed: expected RS256 with key e=65537")
+        mock_verify.side_effect = InvalidTokenError(
+            "JWT signature failed: expected RS256 with key e=65537"
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await get_current_auth_user(credentials=creds)
@@ -253,7 +263,9 @@ async def test_guardrail_auth_exceptions_never_leak_jwt_internals() -> None:
         assert "65537" not in exc_info.value.detail
 
     with patch("app.api.v1.deps.auth_adapter.verify_token") as mock_verify:
-        mock_verify.side_effect = AuthError("Firebase JWKS endpoint connection timeout to https://googleapis.internal")
+        mock_verify.side_effect = AuthError(
+            "Firebase JWKS endpoint connection timeout to https://googleapis.internal"
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await get_current_auth_user(credentials=creds)
@@ -296,7 +308,10 @@ async def test_guardrail_ssrf_error_never_leaks_private_network_topology() -> No
         assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
         assert "169.254.169.254" not in exc_info.value.detail
         assert "Cloud Metadata" not in exc_info.value.detail
-        assert exc_info.value.detail == "Acesso bloqueado por segurança. O endereço informado não é permitido."
+        assert (
+            exc_info.value.detail
+            == "Acesso bloqueado por segurança. O endereço informado não é permitido."
+        )
 
 
 @pytest.mark.asyncio
@@ -331,8 +346,12 @@ async def test_guardrail_copilot_service_upstream_failure_never_leaks_raw_except
     service = CopilotService(mock_db, mock_ai)
 
     with (
-        patch("app.services.copilot_service.ProfileService.get_full_dossier", new_callable=AsyncMock) as mock_dossier,
-        patch("app.services.copilot_service.PromptSkillService.get_by_slug", new_callable=AsyncMock) as mock_skill,
+        patch(
+            "app.services.copilot_service.ProfileService.get_full_dossier", new_callable=AsyncMock
+        ) as mock_dossier,
+        patch(
+            "app.services.copilot_service.PromptSkillService.get_by_slug", new_callable=AsyncMock
+        ) as mock_skill,
     ):
         mock_dossier.return_value = {
             "experiences": [],
@@ -354,4 +373,7 @@ async def test_guardrail_copilot_service_upstream_failure_never_leaks_raw_except
     assert exc_info.value.status_code == status.HTTP_502_BAD_GATEWAY
     assert "ResourceExhausted" not in exc_info.value.detail
     assert "quota_group" not in exc_info.value.detail
-    assert exc_info.value.detail == "Falha na comunicação com o Copilot de IA. Tente novamente mais tarde."
+    assert (
+        exc_info.value.detail
+        == "Falha na comunicação com o Copilot de IA. Tente novamente mais tarde."
+    )

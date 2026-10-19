@@ -58,11 +58,17 @@ class ParsedExperienceDTO(BaseModel):
     is_current: bool = False
     description: str = Field(
         default="",
-        description="Resumo narrativo das atividades e responsabilidades principais da experiência profissional",
+        description=(
+            "Resumo narrativo das atividades e responsabilidades principais da "
+            "experiência profissional"
+        ),
     )
     bullet_points: list[str] = Field(
         default_factory=list,
-        description="Lista de realizações, projetos, responsabilidades e atividades extraídas integralmente do currículo",
+        description=(
+            "Lista de realizações, projetos, responsabilidades e atividades "
+            "extraídas integralmente do currículo"
+        ),
     )
     tech_stack: list[str] = Field(
         default_factory=list,
@@ -129,7 +135,10 @@ class ParsedProjectDTO(BaseModel):
     title: str = Field(..., max_length=150)
     description: str = Field(
         default="",
-        description="Detalhamento integral e completo do projeto, escopo, arquitetura, objetivos, desafios e resultados alcançados, sem resumir ou omitir detalhes do currículo",
+        description=(
+            "Detalhamento integral e completo do projeto, escopo, arquitetura, objetivos, "
+            "desafios e resultados alcançados, sem resumir ou omitir detalhes do currículo"
+        ),
     )
     role: str | None = Field(
         default=None,
@@ -137,11 +146,16 @@ class ParsedProjectDTO(BaseModel):
     )
     technologies: list[str] = Field(
         default_factory=list,
-        description="Linguagens, frameworks, bibliotecas, bancos e ferramentas utilizadas no projeto",
+        description=(
+            "Linguagens, frameworks, bibliotecas, bancos e ferramentas utilizadas no projeto"
+        ),
     )
     bullet_points: list[str] = Field(
         default_factory=list,
-        description="Lista de realizações, funcionalidades, entregas ou desafios do projeto extraídos integralmente do documento original",
+        description=(
+            "Lista de realizações, funcionalidades, entregas ou desafios do projeto "
+            "extraídos integralmente do documento original"
+        ),
     )
     repository_url: str | None = None
     live_url: str | None = None

@@ -7,7 +7,7 @@ com Structured Outputs e garantia algorítmica de zero alucinação.
 import contextlib
 import time
 from io import BytesIO
-from typing import Any
+from typing import Any, cast
 
 from docx import Document
 from google import genai
@@ -46,7 +46,8 @@ ZERO_HALLUCINATION_SYSTEM_INSTRUCTION: str = (
     "5. Formato de Trabalho: Inferir 'remote', 'hybrid' ou 'on-site' apenas se explicitamente "
     "citado.\n"
     "6. Descrições e Realizações das Experiências: Para cada experiência profissional, "
-    "extraia integralmente o resumo contextual ou narrativa das responsabilidades no campo 'description', "
+    "extraia integralmente o resumo contextual ou narrativa das responsabilidades "
+    "no campo 'description', "
     "e cada uma das realizações, projetos ou itens detalhados no campo 'bullet_points', "
     "preservando fielmente o texto original do currículo sem suprimir detalhes.\n"
     "7. Projetos e Iniciativas de Destaque: Para cada projeto presente no currículo, "
@@ -182,7 +183,7 @@ class GeminiResumeParserAdapter(ResumeParserPort):
             if self._thinking_level in ("low", "medium", "high"):
                 with contextlib.suppress(Exception):
                     config_kwargs["thinking_config"] = types.ThinkingConfig(
-                        thinking_level=self._thinking_level
+                        thinking_level=cast(Any, self._thinking_level)
                     )
 
             current_cfg = dict(config_kwargs)
@@ -200,7 +201,8 @@ class GeminiResumeParserAdapter(ResumeParserPort):
                 if any(term in err_str for term in ("503", "unavailable", "high demand")):
                     raise ParserModelUnavailableError(
                         f"Esse modelo ({self._model}) está temporariamente indisponível. "
-                        "Tente novamente em alguns minutos ou selecione outro modelo em Configurações.",
+                        "Tente novamente em alguns minutos ou selecione outro modelo "
+                        "em Configurações.",
                         model=self._model,
                     ) from exc
                 if any(
@@ -208,7 +210,8 @@ class GeminiResumeParserAdapter(ResumeParserPort):
                 ):
                     raise ParserModelUnavailableError(
                         f"Esse modelo ({self._model}) atingiu o limite temporário de uso. "
-                        "Tente novamente em alguns minutos ou selecione outro modelo em Configurações.",
+                        "Tente novamente em alguns minutos ou selecione outro modelo "
+                        "em Configurações.",
                         model=self._model,
                     ) from exc
                 if any(

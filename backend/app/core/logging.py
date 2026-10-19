@@ -4,11 +4,12 @@ Implementa pipeline assíncrono de observabilidade com mascaramento automático 
 e segredos (AppSec/LGPD), injeção de correlation_id via contextvars e formatação NDJSON.
 """
 
+import contextlib
 import logging
-from pathlib import Path
 import re
 import sys
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 import structlog
 
@@ -112,19 +113,14 @@ class MultiWriter:
 
     def __init__(self, file_path: Path) -> None:
         self.file_path = file_path
-        try:
+        with contextlib.suppress(Exception):
             self.file_path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
 
     def write(self, message: str) -> int:
         if hasattr(sys.stdout, "write"):
             sys.stdout.write(message)
-        try:
-            with open(self.file_path, "a", encoding="utf-8") as f:
-                f.write(message)
-        except Exception:
-            pass
+        with contextlib.suppress(Exception), open(self.file_path, "a", encoding="utf-8") as f:
+            f.write(message)
         return len(message)
 
     def flush(self) -> None:
@@ -170,7 +166,7 @@ def setup_logging(cloud_processor: Any | None = None) -> None:
     structlog.configure(
         processors=shared_processors + [final_renderer],
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=writer),
+        logger_factory=structlog.PrintLoggerFactory(file=cast(Any, writer)),
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
         cache_logger_on_first_use=False,
     )

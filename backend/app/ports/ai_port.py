@@ -35,7 +35,9 @@ class HallucinationDetectedError(AIError):
 
 
 class ModelUnavailableError(AIError):
-    """Lançada quando o modelo de IA solicitado está temporariamente indisponível ou sobrecarregado."""
+    """Lançada quando o modelo de IA solicitado está temporariamente indisponível
+    ou sobrecarregado.
+    """
 
     def __init__(self, message: str, model: str | None = None) -> None:
         super().__init__(message)
@@ -61,13 +63,15 @@ class JobAnalysisResult(BaseModel):
 
 
 class SubscriptableModel(BaseModel):
-    """BaseModel com suporte transparente a indexação por chave ('obj[\"campo\"]' e 'obj.get(\"campo\")')."""
+    """BaseModel com suporte transparente a indexação por chave
+    ('obj["campo"]' e 'obj.get("campo")').
+    """
 
     def __getitem__(self, item: str) -> Any:
         try:
             return getattr(self, item)
         except AttributeError:
-            raise KeyError(item)
+            raise KeyError(item) from None
 
     def __contains__(self, item: str) -> bool:
         return hasattr(self, item)
@@ -136,9 +140,8 @@ class GeneratedExperience(SubscriptableModel):
     @model_validator(mode="before")
     @classmethod
     def _handle_legacy_bullets(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            if "achievements" in data and not data.get("bullet_points"):
-                data["bullet_points"] = data.get("achievements") or []
+        if isinstance(data, dict) and "achievements" in data and not data.get("bullet_points"):
+            data["bullet_points"] = data.get("achievements") or []
         return data
 
     @computed_field
@@ -162,9 +165,8 @@ class GeneratedEducation(SubscriptableModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize_institution(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            if not data.get("institution_name") and data.get("institution"):
-                data["institution_name"] = str(data["institution"])
+        if isinstance(data, dict) and not data.get("institution_name") and data.get("institution"):
+            data["institution_name"] = str(data["institution"])
         return data
 
     @computed_field
@@ -187,9 +189,8 @@ class GeneratedCertification(SubscriptableModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize_issuer(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            if not data.get("issuing_organization") and data.get("issuer"):
-                data["issuing_organization"] = str(data["issuer"])
+        if isinstance(data, dict) and not data.get("issuing_organization") and data.get("issuer"):
+            data["issuing_organization"] = str(data["issuer"])
         return data
 
     @computed_field
@@ -312,13 +313,12 @@ class FullGeneratedResumePayload(SubscriptableModel):
     @model_validator(mode="before")
     @classmethod
     def _handle_legacy_fields(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            if "provenance_map" in data and not data.get("provenance_items"):
-                pmap = data.pop("provenance_map", {})
-                if isinstance(pmap, dict):
-                    data["provenance_items"] = [
-                        {"synthesized_term": k, "grounded_in_term": str(v)} for k, v in pmap.items()
-                    ]
+        if isinstance(data, dict) and "provenance_map" in data and not data.get("provenance_items"):
+            pmap = data.pop("provenance_map", {})
+            if isinstance(pmap, dict):
+                data["provenance_items"] = [
+                    {"synthesized_term": k, "grounded_in_term": str(v)} for k, v in pmap.items()
+                ]
         return data
 
     @computed_field
@@ -405,7 +405,8 @@ class AIPort(ABC):
         content: dict[str, Any],
         target_language: str,
     ) -> dict[str, Any]:
-        """Traduz o conteúdo estruturado do currículo para o idioma alvo mantendo integridade factual.
+        """Traduz o conteúdo estruturado do currículo para o idioma alvo mantendo
+        integridade factual.
 
         Args:
             content: Dicionário estruturado do currículo atual.

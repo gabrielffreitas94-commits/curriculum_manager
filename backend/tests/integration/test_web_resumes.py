@@ -572,7 +572,9 @@ async def test_generate_custom_ajax_model_unavailable_returns_json_error_without
         patch(
             "app.services.resume_service.ResumeService.generate_resume",
             new_callable=AsyncMock,
-            side_effect=ModelUnavailableError("Esse modelo está temporariamente indisponível.", model="gemini-3.8-flash"),
+            side_effect=ModelUnavailableError(
+                "Esse modelo está temporariamente indisponível.", model="gemini-3.8-flash"
+            ),
         ),
     ):
         res = await async_client.post(
@@ -626,7 +628,9 @@ async def test_translate_resume_endpoint_ajax_success(async_client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_translate_resume_endpoint_model_unavailable_returns_503(async_client: AsyncClient) -> None:
+async def test_translate_resume_endpoint_model_unavailable_returns_503(
+    async_client: AsyncClient,
+) -> None:
     """Valida que falha de modelo na tradução retorna 503 com mensagem amigável."""
     from app.ports.ai_port import ModelUnavailableError
 
@@ -642,7 +646,9 @@ async def test_translate_resume_endpoint_model_unavailable_returns_503(async_cli
         patch(
             "app.services.resume_service.ResumeService.translate_resume",
             new_callable=AsyncMock,
-            side_effect=ModelUnavailableError("Esse modelo está temporariamente indisponível.", model="gemini-3.8-flash"),
+            side_effect=ModelUnavailableError(
+                "Esse modelo está temporariamente indisponível.", model="gemini-3.8-flash"
+            ),
         ),
     ):
         res = await async_client.post(
@@ -825,6 +831,3 @@ async def test_regenerate_from_chat_success_flow(
         )
         assert res.status_code == 200
         assert res.headers.get("HX-Redirect") == f"/resumes/{new_id}?tab=editor"
-
-
-

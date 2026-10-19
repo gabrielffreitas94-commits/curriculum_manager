@@ -1546,6 +1546,7 @@ async def test_resume_save_persists_language_and_sections(
         assert res.status_code == 200
         assert "Alterações do currículo salvas com sucesso" in res.text
         assert MOCK_RESUME.language == "es-ES"
-        assert MOCK_RESUME.structured_content["header"]["target_title"] == "Ingeniero Principal de Software"
-
-
+        assert (
+            MOCK_RESUME.structured_content["header"]["target_title"]
+            == "Ingeniero Principal de Software"
+        )

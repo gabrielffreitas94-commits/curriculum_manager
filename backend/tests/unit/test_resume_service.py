@@ -437,9 +437,7 @@ async def test_regenerate_resume_from_chat_success(
         structured_content={
             "header": {"full_name": "Gabriel"},
             "professional_summary": "Desenvolvedor Python.",
-            "selected_experiences": [
-                {"company_name": "InovaTech", "position_title": "Senior Dev"}
-            ],
+            "selected_experiences": [{"company_name": "InovaTech", "position_title": "Senior Dev"}],
             "skills_highlighted": ["Python"],
             "provenance_map": {"Python": "Python"},
         },
@@ -515,5 +513,3 @@ async def test_regenerate_resume_from_chat_success(
     assert res.resume_id != base_resume.id
     assert res.match_percentage == 96.0
     mock_adapter.generate_resume.assert_called_once()
-
-
