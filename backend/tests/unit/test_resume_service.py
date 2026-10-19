@@ -278,3 +278,242 @@ async def test_match_preview_integration(
     assert isinstance(preview.match_percentage, float)
     assert len(preview.mandatory_matches) == 1
     assert len(preview.desirable_matches) == 1
+
+
+@pytest.mark.asyncio
+async def test_translate_resume_service_success(
+    db_session: AsyncSession,
+    resume_user: User,
+) -> None:
+    """Valida tradução de currículo com persistência e atualização de idioma via ResumeService."""
+    from app.domain.models import Application, GeneratedResume
+
+    db_session.add(resume_user)
+    await db_session.flush()
+
+    app = Application(
+        user_id=resume_user.id,
+        company_name="Acme Corp",
+        job_title="Software Engineer",
+        job_description="Vaga para Engenheiro de Software",
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    resume = GeneratedResume(
+        application_id=app.id,
+        user_id=resume_user.id,
+        version_number=1,
+        language="pt-BR",
+        structured_content={"header": {"target_title": "Engenheiro Sênior"}},
+    )
+    db_session.add(resume)
+    await db_session.commit()
+    await db_session.refresh(resume)
+
+    service = ResumeService(db=db_session)
+    mock_adapter = MagicMock()
+    mock_adapter.translate_resume_content = AsyncMock(
+        return_value={"header": {"target_title": "Senior Engineer"}, "language": "en-US"}
+    )
+    service._resolve_gemini_adapter = MagicMock(return_value=mock_adapter)  # type: ignore[method-assign]
+
+    updated = await service.translate_resume(
+        user=resume_user,
+        resume_id=resume.id,
+        target_language="en-US",
+    )
+    assert updated.language == "en-US"
+    assert updated.structured_content["header"]["target_title"] == "Senior Engineer"
+
+
+@pytest.mark.asyncio
+async def test_translate_resume_service_not_found(
+    db_session: AsyncSession,
+    resume_user: User,
+) -> None:
+    """Valida que tentar traduzir currículo inexistente levanta 404."""
+    import uuid
+
+    db_session.add(resume_user)
+    await db_session.flush()
+
+    service = ResumeService(db=db_session)
+    with pytest.raises(HTTPException) as exc:
+        await service.translate_resume(
+            user=resume_user,
+            resume_id=uuid.uuid4(),
+            target_language="en-US",
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_regenerate_resume_from_chat_empty_messages_raises_400(
+    db_session: AsyncSession,
+    resume_user: User,
+) -> None:
+    """Valida que invocar regenerate_resume_from_chat com lista de mensagens vazia levanta 400."""
+    service = ResumeService(db=db_session)
+    with pytest.raises(HTTPException) as exc:
+        await service.regenerate_resume_from_chat(
+            user=resume_user,
+            resume_id=uuid.uuid4(),
+            chat_messages=[],
+        )
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_regenerate_resume_from_chat_concurrency_lock(
+    db_session: AsyncSession,
+    resume_user: User,
+) -> None:
+    """Valida que tentativa de regerar concorrentemente com mesma conta levanta 409."""
+    from app.ports.ai_port import ChatMessage
+
+    service = ResumeService(db=db_session)
+    _ACTIVE_GENERATIONS.add(resume_user.id)
+    try:
+        with pytest.raises(HTTPException) as exc:
+            await service.regenerate_resume_from_chat(
+                user=resume_user,
+                resume_id=uuid.uuid4(),
+                chat_messages=[ChatMessage(role="user", content="teste")],
+            )
+        assert exc.value.status_code == 409
+    finally:
+        _ACTIVE_GENERATIONS.discard(resume_user.id)
+
+
+@pytest.mark.asyncio
+async def test_regenerate_resume_from_chat_not_found(
+    db_session: AsyncSession,
+    resume_user: User,
+) -> None:
+    """Valida que tentar regerar com base em currículo inexistente levanta 404."""
+    from app.ports.ai_port import ChatMessage
+
+    db_session.add(resume_user)
+    await db_session.flush()
+
+    service = ResumeService(db=db_session)
+    with pytest.raises(HTTPException) as exc:
+        await service.regenerate_resume_from_chat(
+            user=resume_user,
+            resume_id=uuid.uuid4(),
+            chat_messages=[ChatMessage(role="user", content="teste")],
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_regenerate_resume_from_chat_success(
+    db_session: AsyncSession,
+    resume_user: User,
+) -> None:
+    """Valida o fluxo completo de regeração criando versão sequencial (v2) com base no chat."""
+    from app.domain.models import Application, GeneratedResume
+    from app.ports.ai_port import ChatMessage
+
+    db_session.add(resume_user)
+    await db_session.flush()
+
+    app = Application(
+        user_id=resume_user.id,
+        company_name="Acme Corp",
+        job_title="Lead Python Engineer",
+        job_description="Vaga para liderança e microsserviços em Python.",
+        status="applied",
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    base_resume = GeneratedResume(
+        application_id=app.id,
+        user_id=resume_user.id,
+        version_number=1,
+        language="pt-BR",
+        structured_content={
+            "header": {"full_name": "Gabriel"},
+            "professional_summary": "Desenvolvedor Python.",
+            "selected_experiences": [
+                {"company_name": "InovaTech", "position_title": "Senior Dev"}
+            ],
+            "skills_highlighted": ["Python"],
+            "provenance_map": {"Python": "Python"},
+        },
+        match_analysis={},
+        match_percentage=85.0,
+    )
+    db_session.add(base_resume)
+    await db_session.commit()
+    await db_session.refresh(base_resume)
+
+    service = ResumeService(db=db_session)
+    mock_adapter = MagicMock()
+    mock_payload = FullGeneratedResumePayload(
+        header={"full_name": "Gabriel"},
+        professional_summary="Líder técnico especialista em Python e microsserviços.",
+        selected_experiences=[
+            {
+                "company_name": "InovaTech",
+                "position_title": "Lead Engineer",
+                "bullet_points": ["Liderou squad de 8 devs."],
+                "tech_stack": ["Python"],
+                "sort_order": 0,
+            }
+        ],
+        skills_highlighted=["Python"],
+        education=[],
+        certifications=[],
+        projects=[],
+        languages=[],
+        match_analysis={},
+        match_percentage=96.0,
+        provenance_map={"Python": "Python"},
+    )
+    mock_adapter.generate_resume = AsyncMock(return_value=mock_payload)
+    mock_adapter.last_token_usage = 120
+    service._resolve_gemini_adapter = MagicMock(return_value=mock_adapter)  # type: ignore[method-assign]
+
+    mock_dossier = {
+        "experiences": [
+            MagicMock(
+                company_name="InovaTech",
+                position_title="Lead Engineer",
+                start_date=None,
+                end_date=None,
+                is_current=True,
+                description="Liderança",
+                bullet_points=["Liderou squad."],
+                tech_stack=["Python"],
+                quantifiable_results=["Métricas"],
+            )
+        ],
+        "educations": [],
+        "certifications": [],
+        "skills": [MagicMock(name="Python")],
+        "languages": [],
+        "projects": [],
+    }
+
+    with patch(
+        "app.services.resume_service.ProfileService.get_full_dossier",
+        AsyncMock(return_value=mock_dossier),
+    ):
+        res = await service.regenerate_resume_from_chat(
+            user=resume_user,
+            resume_id=base_resume.id,
+            chat_messages=[
+                ChatMessage(role="user", content="Quero mais foco em liderança técnica.")
+            ],
+            prompt_skill_slug="google-xyz",
+        )
+
+    assert res.version_number == 2
+    assert res.resume_id != base_resume.id
+    assert res.match_percentage == 96.0
+    mock_adapter.generate_resume.assert_called_once()
+
+

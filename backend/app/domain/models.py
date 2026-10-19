@@ -165,6 +165,12 @@ class UserSettings(Base, PrimaryKeyUUIDMixin, TimestampMixin):
         nullable=False,
     )
     encrypted_gemini_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gemini_model: Mapped[str] = mapped_column(
+        String(50), default="gemini-3.8-flash", server_default="gemini-3.8-flash", nullable=False
+    )
+    gemini_thinking_level: Mapped[str] = mapped_column(
+        String(20), default="medium", server_default="medium", nullable=False
+    )
     preferred_language: Mapped[str] = mapped_column(String(10), default="pt-BR", nullable=False)
     default_prompt_skill_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("prompt_skills.id", ondelete="SET NULL"),
@@ -174,6 +180,16 @@ class UserSettings(Base, PrimaryKeyUUIDMixin, TimestampMixin):
     in_app_notifications_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
+    tokens_used_today: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    requests_used_today: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    tokens_used_total: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    last_token_reset_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # Relacionamentos
     user: Mapped["User"] = relationship(back_populates="settings")

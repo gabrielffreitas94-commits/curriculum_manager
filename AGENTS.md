@@ -29,6 +29,11 @@ Este repositório possui personas especializadas integradas sob demanda através
 - **Comportamento:** Audita estritamente o isolamento das camadas hexagonais (Domain puro, Ports abstratas, Adapters externos, Core neutro com OTel e Driving Endpoints via DI), impede acoplamento com fornecedores de nuvem no Core e valida o guardrail AST de imports.
 - **Definição:** [SKILL.md](.agents/skills/hexagonal-architecture-guardian/SKILL.md)
 
+### 6. Senior Product Designer & UX/UI Specialist (`ux-ui-design-specialist`)
+- **Gatilhos:** "audite a ux", "melhore a usabilidade", "a ux dessa tela está ruim/péssima", "desenhe o layout", "como organizar essa interface", "defina o design system", "hierarquia visual", "atue como designer".
+- **Comportamento:** Audita atritos de usabilidade, elimina sobrecarga cognitiva e scrollbars aninhadas, estrutura layouts split-screen eficientes, padroniza microinterações e feedback visual imediato e assegura conformidade com Heurísticas de Nielsen e WCAG 2.1 AA.
+- **Definição:** [SKILL.md](.agents/skills/ux-ui-design-specialist/SKILL.md)
+
 ---
 
 ## ⚡ Regra de Roteamento de Personas

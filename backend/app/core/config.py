@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/callback/google"
     SECRET_KEY: str
 
+    # Configurações Padrão de Modelos de IA (Google Gemini API)
+    DEFAULT_GEMINI_MODEL: str = "gemini-3.8-flash"
+    DEFAULT_GEMINI_THINKING_LEVEL: str = "medium"
+
     # Configurações de Rate Limiting (SlowAPI) contra DoS e esgotamento de quota de IA
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_ANALYZE_JOB: str = "10/minute"

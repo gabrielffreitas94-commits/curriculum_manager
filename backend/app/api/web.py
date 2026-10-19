@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
 from fastapi import (
     APIRouter,
@@ -19,7 +20,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import select_autoescape
 from sqlalchemy import select
@@ -39,6 +40,8 @@ from app.api.v1.deps import (
     get_user_service,
     google_oauth_adapter,
     resolve_gemini_api_key,
+    resolve_gemini_model,
+    resolve_gemini_thinking_level,
 )
 from app.api.v1.schemas.application import (
     ApplicationCreate,
@@ -55,8 +58,15 @@ from app.core.logging import get_logger
 from app.core.rate_limit import limiter
 from app.core.telemetry import set_user_id
 from app.core.url_scraper import URLScraperError
-from app.domain.models import Application, GeneratedResume, User, UserSettings
-from app.ports.ai_port import ChatMessage
+from app.domain.models import (
+    Application,
+    ApplicationNote,
+    GeneratedResume,
+    PromptSkill,
+    User,
+    UserSettings,
+)
+from app.ports.ai_port import AIError, ChatMessage, ModelUnavailableError
 from app.ports.oauth_port import OAuthError
 from app.ports.resume_parser_port import ParsedProfileDTO, ResumeParserError
 from app.services.application_service import ApplicationService
@@ -108,8 +118,19 @@ async def get_authenticated_web_user(
 async def welcome_page(
     request: Request,
     current_user: User | None = Depends(get_authenticated_web_user),
-) -> HTMLResponse:
-    """Renderiza a página inicial de boas-vindas com HTMX e estado de autenticação."""
+    profile_service: ProfileService = Depends(get_profile_service),
+) -> Response:
+    """Renderiza a página inicial para visitantes ou redireciona inteligentemente o usuário autenticado."""
+    if current_user is not None:
+        has_dossier = False
+        if profile_service is not None and hasattr(profile_service, "has_dossier"):
+            try:
+                has_dossier = await profile_service.has_dossier(current_user.id)
+            except Exception:
+                has_dossier = False
+        target_url = "/applications" if has_dossier else "/profile"
+        return RedirectResponse(url=target_url, status_code=status.HTTP_302_FOUND)
+
     return templates.TemplateResponse(
         request=request,
         name="index.html.jinja2",
@@ -155,6 +176,7 @@ async def google_callback(
     state: str | None = None,
     error: str | None = None,
     auth_service: AuthService = Depends(get_auth_service),
+    profile_service: ProfileService = Depends(get_profile_service),
 ) -> Response:
     """Processa o callback de autorização do Google OAuth 2.0 e autentica o usuário."""
     if error or not code:
@@ -205,7 +227,14 @@ async def google_callback(
         provider="google",
         user_id=str(user.id),
     )
-    response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    has_dossier = False
+    if profile_service is not None and hasattr(profile_service, "has_dossier"):
+        try:
+            has_dossier = await profile_service.has_dossier(user.id)
+        except Exception:
+            has_dossier = False
+    target_url = "/applications" if has_dossier else "/profile"
+    response = RedirectResponse(url=target_url, status_code=status.HTTP_302_FOUND)
     _set_session_cookie(response=response, session_token=session_token)
     response.delete_cookie(key="oauth_state", path="/auth/callback/google")
     return response
@@ -277,16 +306,14 @@ async def import_cv_upload(
     except FileSecurityError as exc:
         logger.warning("web_resume_upload_rejected", error=str(exc))
         modal_html = (
-            '<div id="import-review-modal-backdrop" class="fixed inset-0 z-50 flex '
-            'items-center justify-center p-4 bg-slate-950/60" role="dialog" aria-modal="true">\n'
-            '  <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-md w-full '
-            'border border-rose-200 dark:border-rose-900 shadow-xl text-center space-y-4">\n'
+            '<div id="import-review-modal-backdrop" class="app-modal-backdrop" role="dialog" aria-modal="true">\n'
+            '  <div class="app-modal-dialog max-w-md p-6 text-center space-y-4">\n'
             '    <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 '
             "dark:bg-rose-950 dark:text-rose-400 mx-auto flex items-center justify-center "
             'text-xl font-bold">⚠️</div>\n'
-            '    <h3 class="text-base font-bold text-slate-900 dark:text-slate-100">'
+            '    <h3 class="app-modal-title justify-center">'
             "Falha no Envio do Arquivo</h3>\n"
-            f'    <p class="text-xs text-slate-600 dark:text-slate-400">{exc}</p>\n'
+            f'    <p class="app-modal-subtitle text-slate-600 dark:text-slate-400">{exc}</p>\n'
             '    <button type="button" onclick="closeModal()" class="w-full py-2 bg-slate-900 '
             "text-white dark:bg-white dark:text-slate-900 rounded-xl text-xs font-bold "
             'cursor-pointer">Fechar</button>\n'
@@ -299,7 +326,9 @@ async def import_cv_upload(
         )
 
     api_key = resolve_gemini_api_key(current_user)
-    parser = get_resume_parser_adapter(api_key=api_key)
+    model = resolve_gemini_model(current_user)
+    thinking_level = resolve_gemini_thinking_level(current_user)
+    parser = get_resume_parser_adapter(api_key=api_key, model=model, thinking_level=thinking_level)
     try:
         parsed_dto = await parser.parse_resume(
             file_bytes=file_bytes,
@@ -308,23 +337,56 @@ async def import_cv_upload(
         )
     except ResumeParserError as exc:
         logger.error("web_resume_parsing_error", error=str(exc))
-        error_modal_html = (
-            '<div id="import-review-modal-backdrop" class="fixed inset-0 z-50 flex '
-            'items-center justify-center p-4 bg-slate-950/60" role="dialog" aria-modal="true">\n'
-            '  <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-md w-full '
-            'border border-amber-200 dark:border-amber-900 shadow-xl text-center space-y-4">\n'
-            '    <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-600 '
-            "dark:bg-amber-950 dark:text-amber-400 mx-auto flex items-center justify-center "
-            'text-xl font-bold">⚠️</div>\n'
-            '    <h3 class="text-base font-bold text-slate-900 dark:text-slate-100">'
-            "Não foi possível analisar o currículo</h3>\n"
-            f'    <p class="text-xs text-slate-600 dark:text-slate-400">{exc}</p>\n'
-            '    <button type="button" onclick="closeModal()" class="w-full py-2 bg-slate-900 '
-            "text-white dark:bg-white dark:text-slate-900 rounded-xl text-xs font-bold "
-            'cursor-pointer">Fechar</button>\n'
-            "  </div>\n"
-            "</div>"
-        )
+        is_missing_key = "não configurada" in str(exc).lower()
+        if is_missing_key:
+            error_modal_html = (
+                '<div id="import-review-modal-backdrop" class="app-modal-backdrop" '
+                'role="dialog" aria-modal="true" aria-labelledby="byok-modal-title">\n'
+                '  <div class="app-modal-dialog max-w-md p-6 text-center space-y-4">\n'
+                '    <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-600 '
+                "dark:bg-amber-950 dark:text-amber-400 mx-auto flex items-center justify-center "
+                'text-xl font-bold">🔑</div>\n'
+                '    <h3 id="byok-modal-title" class="app-modal-title justify-center">'
+                "Chave do Gemini Não Configurada (100% BYOK)</h3>\n"
+                '    <p class="app-modal-subtitle text-slate-600 dark:text-slate-400 leading-relaxed">\n'
+                "      O ThothCVs AI opera sob o modelo <strong>100% BYOK</strong> "
+                "(Bring Your Own Key) para garantir sua total privacidade e controle. "
+                "Para extrair os dados factuais do seu currículo com IA, cadastre sua chave de "
+                "API gratuita do Google AI Studio nas configurações.\n"
+                "    </p>\n"
+                '    <div class="flex flex-col sm:flex-row gap-2 pt-2">\n'
+                '      <a href="/settings" class="inline-flex items-center justify-center gap-1.5 '
+                "w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl "
+                'text-xs font-bold transition-colors cursor-pointer shadow-xs">\n'
+                "        ⚙️ Ir para Configurações\n"
+                "      </a>\n"
+                '      <button type="button" onclick="closeModal()" class="w-full sm:w-auto '
+                "py-2.5 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 "
+                "hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-semibold "
+                'cursor-pointer">\n'
+                "        Fechar\n"
+                "      </button>\n"
+                "    </div>\n"
+                "  </div>\n"
+                "</div>"
+            )
+        else:
+            error_modal_html = (
+                '<div id="import-review-modal-backdrop" class="app-modal-backdrop" '
+                'role="dialog" aria-modal="true">\n'
+                '  <div class="app-modal-dialog max-w-md p-6 text-center space-y-4">\n'
+                '    <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-600 '
+                "dark:bg-amber-950 dark:text-amber-400 mx-auto flex items-center justify-center "
+                'text-xl font-bold">⚠️</div>\n'
+                '    <h3 class="app-modal-title justify-center">'
+                "Não foi possível analisar o currículo</h3>\n"
+                f'    <p class="app-modal-subtitle text-slate-600 dark:text-slate-400">{exc}</p>\n'
+                '    <button type="button" onclick="closeModal()" class="w-full py-2 bg-slate-900 '
+                "text-white dark:bg-white dark:text-slate-900 rounded-xl text-xs font-bold "
+                'cursor-pointer">Fechar</button>\n'
+                "  </div>\n"
+                "</div>"
+            )
         return HTMLResponse(
             content=error_modal_html,
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -370,6 +432,7 @@ async def new_resume_page(
     request: Request,
     current_user: User | None = Depends(get_authenticated_web_user),
     prompt_skill_service: PromptSkillService = Depends(get_prompt_skill_service),
+    db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     """Renderiza a página interativa de criação e tailoring de currículo sob medida."""
     if current_user is None:
@@ -377,7 +440,12 @@ async def new_resume_page(
             url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
         )
 
+    from app.services.token_service import get_user_token_usage
+
+    error_msg = request.query_params.get("error")
     skills = await prompt_skill_service.list_active_skills(user_id=current_user.id)
+    token_usage = await get_user_token_usage(db, current_user.id)
+
     return templates.TemplateResponse(
         request=request,
         name="resumes/new.html.jinja2",
@@ -390,6 +458,8 @@ async def new_resume_page(
             "prompt_skill_slug": "google-xyz",
             "history_json": "[]",
             "job_description": "",
+            "error_message": error_msg,
+            "token_usage": token_usage,
         },
     )
 
@@ -594,9 +664,14 @@ async def copilot_chat_interaction(
         )
         chat_messages.append(ChatMessage(role="assistant", content=reply))
         error_msg = None
+    except ModelUnavailableError as exc:
+        logger.warning("web_copilot_chat_model_unavailable", error=str(exc))
+        error_msg = str(exc)
     except Exception as exc:
         logger.error("web_copilot_chat_error", error=str(exc), exc_info=True)
-        error_msg = f"Falha ao comunicar com o assistente de IA: {exc}"
+        error_msg = (
+            "Falha ao comunicar com o assistente de IA. Por favor, tente novamente mais tarde."
+        )
 
     updated_history = json.dumps([{"role": m.role, "content": m.content} for m in chat_messages])
 
@@ -620,30 +695,246 @@ async def generate_custom_resume(
     request: Request,
     job_description: str = Form(...),
     prompt_skill_slug: str = Form("google-xyz"),
+    language: str = Form("pt-BR"),
+    model_choice: str | None = Form(None),
     current_user: User | None = Depends(get_authenticated_web_user),
     resume_service: ResumeService = Depends(get_resume_service),
 ) -> Response:
     """Dispara a geração de currículo inteligente e estruturado a partir da interface web."""
+    is_ajax = request.headers.get(
+        "x-requested-with"
+    ) == "XMLHttpRequest" or "application/json" in request.headers.get("accept", "")
+
     if current_user is None:
+        logger.warning(
+            "web_custom_resume_generation_unauthenticated",
+            path=request.url.path,
+        )
+        if is_ajax:
+            return JSONResponse(
+                content={
+                    "status": "error",
+                    "message": "Autenticação necessária. Faça login novamente.",
+                },
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
         return RedirectResponse(
             url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
         )
 
-    result = await resume_service.generate_resume(
-        user=current_user,
-        payload=ResumeGenerateRequest(
-            job_description=job_description,
-            prompt_skill_slug=prompt_skill_slug,
-        ),
-    )
+    if model_choice:
+        if ":" in model_choice:
+            model_part, thinking_part = model_choice.split(":", 1)
+        else:
+            model_part, thinking_part = model_choice, "medium"
+
+        stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+        res = await resume_service._db.execute(stmt)
+        user_settings = res.scalar_one_or_none()
+        if not user_settings:
+            user_settings = UserSettings(user_id=current_user.id)
+            resume_service._db.add(user_settings)
+        user_settings.gemini_model = model_part
+        user_settings.gemini_thinking_level = thinking_part
+        current_user.settings = user_settings
+        await resume_service._db.commit()
+
     logger.info(
-        "web_custom_resume_generated",
+        "web_custom_resume_generation_initiated",
         user_id=str(current_user.id),
-        resume_id=str(result.resume_id),
+        prompt_skill_slug=prompt_skill_slug,
+        language=language,
+        model_choice=model_choice,
+        job_description_length=len(job_description),
     )
-    return RedirectResponse(
-        url=f"/resumes/{result.resume_id}/preview", status_code=status.HTTP_302_FOUND
+
+    try:
+        result = await resume_service.generate_resume(
+            user=current_user,
+            payload=ResumeGenerateRequest(
+                job_description=job_description,
+                prompt_skill_slug=prompt_skill_slug,
+                language=language,
+            ),
+        )
+        logger.info(
+            "web_custom_resume_generated",
+            user_id=str(current_user.id),
+            resume_id=str(result.resume_id),
+            language=language,
+        )
+        redirect_url = f"/resumes/{result.resume_id}/preview"
+        if is_ajax:
+            return JSONResponse(
+                content={
+                    "status": "ok",
+                    "resume_id": str(result.resume_id),
+                    "redirect_url": redirect_url,
+                }
+            )
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    except HTTPException as exc:
+        logger.warning(
+            "web_custom_resume_generation_http_error",
+            user_id=str(current_user.id),
+            status_code=exc.status_code,
+            detail=str(exc.detail),
+        )
+        safe_detail = (
+            "Ocorreu uma falha no servidor ao gerar o currículo. Tente novamente mais tarde."
+            if exc.status_code >= 500
+            else str(exc.detail)
+        )
+        if is_ajax:
+            return JSONResponse(
+                content={"status": "error", "message": safe_detail},
+                status_code=exc.status_code,
+            )
+        return RedirectResponse(
+            url=f"/resumes/new?error={quote_plus(safe_detail)}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except ModelUnavailableError as exc:
+        logger.warning(
+            "web_custom_resume_generation_model_unavailable",
+            user_id=str(current_user.id),
+            model=exc.model,
+            error=str(exc),
+        )
+        if is_ajax:
+            return JSONResponse(
+                content={"status": "error", "message": str(exc)},
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return RedirectResponse(
+            url=f"/resumes/new?error={quote_plus(str(exc))}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except (AIError, Exception) as exc:
+        logger.error(
+            "web_custom_resume_generation_failed",
+            user_id=str(current_user.id),
+            error=str(exc),
+            exc_info=True,
+        )
+        err_msg = "Falha na geração do currículo com IA. Por favor, tente novamente."
+        if is_ajax:
+            return JSONResponse(
+                content={"status": "error", "message": err_msg},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return RedirectResponse(
+            url=f"/resumes/new?error={quote_plus(err_msg)}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+
+@router.post("/resumes/{resume_id}/translate")
+@limiter.limit("10/minute")
+async def resume_translate_language(
+    request: Request,
+    resume_id: uuid.UUID,
+    language: str = Form(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    resume_service: ResumeService = Depends(get_resume_service),
+) -> Response:
+    """Traduz o currículo atual diretamente para o idioma selecionado mantendo fidelidade factual."""
+    is_ajax = request.headers.get(
+        "x-requested-with"
+    ) == "XMLHttpRequest" or "application/json" in request.headers.get("accept", "")
+
+    if current_user is None:
+        if is_ajax:
+            return JSONResponse(
+                content={
+                    "status": "error",
+                    "message": "Autenticação necessária. Faça login novamente.",
+                },
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    logger.info(
+        "web_resume_translation_initiated",
+        user_id=str(current_user.id),
+        resume_id=str(resume_id),
+        target_language=language,
     )
+
+    try:
+        resume = await resume_service.translate_resume(
+            user=current_user,
+            resume_id=resume_id,
+            target_language=language,
+        )
+        redirect_url = f"/resumes/{resume.id}/preview?tab=editor&translated=1"
+        if is_ajax:
+            from app.services.token_service import get_user_token_usage
+
+            usage_data = await get_user_token_usage(resume_service._db, current_user.id)
+            return JSONResponse(
+                content={
+                    "status": "ok",
+                    "message": f"Currículo traduzido com sucesso para {language}!",
+                    "redirect_url": redirect_url,
+                    "tokens_used_today": usage_data["tokens_used_today"],
+                    "formatted_tokens_today": usage_data["formatted_tokens_today"],
+                }
+            )
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    except ModelUnavailableError as exc:
+        logger.warning(
+            "web_resume_translation_model_unavailable",
+            user_id=str(current_user.id),
+            resume_id=str(resume_id),
+            error=str(exc),
+        )
+        if is_ajax:
+            return JSONResponse(
+                content={"status": "error", "message": str(exc)},
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return RedirectResponse(
+            url=f"/resumes/{resume_id}/preview?tab=editor&error={quote_plus(str(exc))}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except HTTPException as exc:
+        logger.warning(
+            "web_resume_translation_http_error",
+            user_id=str(current_user.id),
+            resume_id=str(resume_id),
+            status_code=exc.status_code,
+            detail=str(exc.detail),
+        )
+        if is_ajax:
+            return JSONResponse(
+                content={"status": "error", "message": str(exc.detail)},
+                status_code=exc.status_code,
+            )
+        return RedirectResponse(
+            url=f"/resumes/{resume_id}/preview?tab=editor&error={quote_plus(str(exc.detail))}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except Exception as exc:
+        logger.error(
+            "web_resume_translation_failed",
+            user_id=str(current_user.id),
+            resume_id=str(resume_id),
+            error=str(exc),
+            exc_info=True,
+        )
+        err_msg = "Falha ao traduzir o currículo. Por favor, tente novamente."
+        if is_ajax:
+            return JSONResponse(
+                content={"status": "error", "message": err_msg},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return RedirectResponse(
+            url=f"/resumes/{resume_id}/preview?tab=editor&error={quote_plus(err_msg)}",
+            status_code=status.HTTP_302_FOUND,
+        )
 
 
 def _extract_updated_resume_content(
@@ -656,6 +947,9 @@ def _extract_updated_resume_content(
     if "target_title" in form_data and form_data["target_title"]:
         header["target_title"] = str(form_data["target_title"]).strip()
     content["header"] = header
+
+    if "language" in form_data and form_data["language"]:
+        content["language"] = str(form_data["language"]).strip()
 
     if "professional_summary" in form_data and form_data["professional_summary"] is not None:
         content["professional_summary"] = str(form_data["professional_summary"]).strip()
@@ -711,13 +1005,87 @@ def _extract_updated_resume_content(
                     "company_name": company,
                     "start_date": start_date,
                     "end_date": end_date,
-                    "tech_stack": base_exp.get("tech_stack", []),
+                    "tech_stack": (
+                        [
+                            t.strip()
+                            for t in str(form_data.get(f"exp_{idx}_tech", "")).split(",")
+                            if t.strip()
+                        ]
+                        if f"exp_{idx}_tech" in form_data
+                        else base_exp.get("tech_stack", [])
+                    ),
                     "bullet_points": bullet_points,
                     "achievements": bullet_points,
                 }
             )
         content["selected_experiences"] = updated_exps
         content["experiences"] = updated_exps
+
+    # Extrai formações acadêmicas editadas / adicionadas
+    edu_indices: set[int] = set()
+    for k in form_data:
+        if k.startswith("edu_") and k.endswith("_degree"):
+            try:
+                idx = int(k.split("_")[1])
+                edu_indices.add(idx)
+            except (IndexError, ValueError):
+                pass
+
+    if edu_indices:
+        updated_edus: list[dict[str, Any]] = []
+        for idx in sorted(edu_indices):
+            degree = str(form_data.get(f"edu_{idx}_degree", "")).strip()
+            institution = str(form_data.get(f"edu_{idx}_institution", "")).strip()
+            field_of_study = str(form_data.get(f"edu_{idx}_field", "")).strip()
+            period = str(form_data.get(f"edu_{idx}_period", "")).strip()
+            start_date = period
+            end_date = ""
+            if period and "—" in period:
+                parts = [p.strip() for p in period.split("—")]
+                start_date = parts[0]
+                end_date = parts[1] if len(parts) > 1 else ""
+            elif period and "-" in period:
+                parts = [p.strip() for p in period.split("-")]
+                start_date = parts[0]
+                end_date = parts[1] if len(parts) > 1 else ""
+
+            if degree or institution:
+                updated_edus.append(
+                    {
+                        "degree": degree,
+                        "institution_name": institution,
+                        "institution": institution,
+                        "field_of_study": field_of_study,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                    }
+                )
+        content["education"] = updated_edus
+
+    # Extrai certificações editadas / adicionadas
+    cert_indices: set[int] = set()
+    for k in form_data:
+        if k.startswith("cert_") and k.endswith("_name"):
+            try:
+                idx = int(k.split("_")[1])
+                cert_indices.add(idx)
+            except (IndexError, ValueError):
+                pass
+
+    if cert_indices:
+        updated_certs: list[dict[str, Any]] = []
+        for idx in sorted(cert_indices):
+            name = str(form_data.get(f"cert_{idx}_name", "")).strip()
+            issuer = str(form_data.get(f"cert_{idx}_issuer", "")).strip()
+            if name:
+                updated_certs.append(
+                    {
+                        "name": name,
+                        "issuing_organization": issuer,
+                        "issuer": issuer,
+                    }
+                )
+        content["certifications"] = updated_certs
 
     return content
 
@@ -729,7 +1097,7 @@ async def resume_preview_page(
     current_user: User | None = Depends(get_authenticated_web_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Carrega o editor Live Split-View com pré-visualização A4 sincronizada."""
+    """Carrega o workspace integrado do currículo com preview ao vivo, dossiê mestre e copilot."""
     if current_user is None:
         return RedirectResponse(
             url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
@@ -748,9 +1116,79 @@ async def resume_preview_page(
             detail="Currículo não encontrado.",
         )
 
-    stmt_app = select(Application).where(Application.id == resume.application_id)
-    res_app = await db.execute(stmt_app)
-    application = res_app.scalar_one_or_none()
+    application = None
+    if resume.application_id:
+        stmt_app = select(Application).where(Application.id == resume.application_id)
+        res_app = await db.execute(stmt_app)
+        application = res_app.scalar_one_or_none()
+
+    # 1. Recupera o Dossiê Mestre factual completo do candidato
+    full_dossier: dict[str, Any] = {
+        "experiences": [],
+        "educations": [],
+        "certifications": [],
+        "projects": [],
+        "skills": [],
+        "languages": [],
+    }
+    try:
+        profile_service = ProfileService(db)
+        full_dossier = await profile_service.get_full_dossier(current_user.id)
+    except Exception as exc:
+        logger.debug("web_preview_dossier_fetch_fallback", error=str(exc))
+
+    # 2. Carrega histórico de conversa com o Copilot IA vinculado à oportunidade
+    chat_messages: list[ChatMessage] = []
+    copilot_notes: list[Any] = []
+    if resume.application_id:
+        try:
+            stmt_notes = (
+                select(ApplicationNote)
+                .where(
+                    ApplicationNote.application_id == resume.application_id,
+                    ApplicationNote.note_type == "copilot_chat",
+                )
+                .order_by(ApplicationNote.created_at.asc())
+            )
+            res_notes = await db.execute(stmt_notes)
+            copilot_notes = list(res_notes.scalars().all())
+        except Exception:
+            if application and hasattr(application, "notes"):
+                copilot_notes = [
+                    n
+                    for n in (application.notes or [])
+                    if getattr(n, "note_type", "") == "copilot_chat"
+                ]
+
+    for n in copilot_notes:
+        raw_text = getattr(n, "content", "")
+        if raw_text.startswith("👤 Candidato: "):
+            chat_messages.append(
+                ChatMessage(role="user", content=raw_text[len("👤 Candidato: ") :])
+            )
+        elif raw_text.startswith("🤖 Copilot IA: "):
+            chat_messages.append(
+                ChatMessage(role="assistant", content=raw_text[len("🤖 Copilot IA: ") :])
+            )
+        elif raw_text.startswith("🤖 Copilot: "):
+            chat_messages.append(
+                ChatMessage(role="assistant", content=raw_text[len("🤖 Copilot: ") :])
+            )
+        else:
+            chat_messages.append(ChatMessage(role="assistant", content=raw_text))
+
+    history_json = json.dumps([{"role": m.role, "content": m.content} for m in chat_messages])
+
+    prompt_skill_slug = "google-xyz"
+    if resume.prompt_skill_id:
+        try:
+            stmt_ps = select(PromptSkill).where(PromptSkill.id == resume.prompt_skill_id)
+            res_ps = await db.execute(stmt_ps)
+            ps = res_ps.scalar_one_or_none()
+            if ps and ps.slug:
+                prompt_skill_slug = ps.slug
+        except Exception:
+            pass
 
     return templates.TemplateResponse(
         request=request,
@@ -760,10 +1198,276 @@ async def resume_preview_page(
             "resume": resume,
             "application": application,
             "content": resume.structured_content,
+            "full_dossier": full_dossier,
+            "chat_messages": chat_messages,
+            "history_json": history_json,
+            "prompt_skill_slug": prompt_skill_slug,
             "current_user": current_user,
             "active_tab": "resumes",
         },
     )
+
+
+@router.post("/resumes/{resume_id}/copilot-chat", response_class=HTMLResponse)
+async def resume_preview_copilot_chat(
+    request: Request,
+    resume_id: uuid.UUID,
+    message: str = Form(...),
+    prompt_skill_slug: str = Form("google-xyz"),
+    history_json: str = Form("[]"),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Interação conversacional com o Copilot no Live Editor, persistindo histórico na vaga."""
+    if current_user is None:
+        return HTMLResponse(
+            content="<script>window.location.href='/?auth_error=login_required';</script>",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    stmt = select(GeneratedResume).where(
+        GeneratedResume.id == resume_id,
+        GeneratedResume.user_id == current_user.id,
+    )
+    result = await db.execute(stmt)
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Currículo não encontrado."
+        )
+
+    application = None
+    if resume.application_id:
+        stmt_app = select(Application).where(Application.id == resume.application_id)
+        res_app = await db.execute(stmt_app)
+        application = res_app.scalar_one_or_none()
+
+    raw_history: list[dict[str, str]] = []
+    try:
+        raw_history = json.loads(history_json)
+    except Exception:
+        raw_history = []
+
+    chat_messages = [
+        ChatMessage(role=m.get("role", "user"), content=m.get("content", ""))
+        for m in raw_history
+        if "role" in m and "content" in m
+    ]
+
+    clean_message = message.strip()
+    if not clean_message:
+        return templates.TemplateResponse(
+            request=request,
+            name="resumes/partials/preview_copilot_chat.html.jinja2",
+            context={
+                "request": request,
+                "resume": resume,
+                "application": application,
+                "messages": chat_messages,
+                "prompt_skill_slug": prompt_skill_slug,
+                "history_json": history_json,
+                "error_message": "Por favor, digite uma mensagem para o Copilot.",
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    chat_messages.append(ChatMessage(role="user", content=clean_message))
+    copilot_service = create_copilot_service(db=db, user=current_user)
+
+    job_description = (
+        application.job_description
+        if application and application.job_description
+        else "Oportunidade de Engenharia e Tecnologia"
+    )
+
+    error_msg = None
+    total_tokens = 0
+    start_time = time.perf_counter()
+    try:
+        reply = await copilot_service.chat(
+            user=current_user,
+            job_description=job_description,
+            prompt_skill_slug=prompt_skill_slug,
+            messages=chat_messages,
+        )
+        chat_messages.append(ChatMessage(role="assistant", content=reply))
+
+        # Persiste histórico de conversa na vaga (ApplicationNote)
+        if resume.application_id:
+            note_user = ApplicationNote(
+                application_id=resume.application_id,
+                content=f"👤 Candidato: {clean_message}",
+                note_type="copilot_chat",
+            )
+            note_ai = ApplicationNote(
+                application_id=resume.application_id,
+                content=f"🤖 Copilot IA: {reply}",
+                note_type="copilot_chat",
+            )
+            db.add(note_user)
+            db.add(note_ai)
+            if application:
+                application.last_activity_at = datetime.now(UTC)
+            await db.commit()
+
+        raw_tokens = getattr(copilot_service._ai_port, "last_token_usage", 0)
+        total_tokens = raw_tokens if isinstance(raw_tokens, int) else 0
+        if total_tokens > 0:
+            from app.services.token_service import record_token_usage
+
+            await record_token_usage(db, current_user, total_tokens)
+
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.info(
+            "web_preview_copilot_chat_turn_completed",
+            resume_id=str(resume.id),
+            application_id=str(resume.application_id),
+            user_id=str(current_user.id),
+            duration_ms=duration_ms,
+            total_tokens=total_tokens,
+        )
+    except ModelUnavailableError as exc:
+        logger.warning("web_preview_copilot_chat_model_unavailable", error=str(exc))
+        error_msg = str(exc)
+    except Exception as exc:
+        logger.error("web_preview_copilot_chat_error", error=str(exc), exc_info=True)
+        error_msg = (
+            "Falha ao comunicar com o assistente de IA. Por favor, tente novamente mais tarde."
+        )
+
+    updated_history = json.dumps([{"role": m.role, "content": m.content} for m in chat_messages])
+
+    response = templates.TemplateResponse(
+        request=request,
+        name="resumes/partials/preview_copilot_chat.html.jinja2",
+        context={
+            "request": request,
+            "resume": resume,
+            "application": application,
+            "messages": chat_messages,
+            "prompt_skill_slug": prompt_skill_slug,
+            "history_json": updated_history,
+            "error_message": error_msg,
+        },
+    )
+    if total_tokens > 0:
+        response.headers["HX-Trigger"] = json.dumps({"refreshTokens": True})
+    return response
+
+
+@router.post("/resumes/{resume_id}/regenerate-from-chat")
+async def resume_preview_regenerate_from_chat(
+    request: Request,
+    resume_id: uuid.UUID,
+    history_json: str = Form("[]"),
+    prompt_skill_slug: str = Form("google-xyz"),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+    resume_service: ResumeService = Depends(get_resume_service),
+) -> Response:
+    """Regera uma nova versão calibrada do currículo com base no histórico do Copilot Chat."""
+    if current_user is None:
+        if "HX-Request" in request.headers:
+            resp = Response(status_code=status.HTTP_401_UNAUTHORIZED)
+            resp.headers["HX-Redirect"] = "/?auth_error=login_required"
+            return resp
+        return RedirectResponse(
+            url="/?auth_error=login_required", status_code=status.HTTP_302_FOUND
+        )
+
+    raw_history: list[dict[str, str]] = []
+    try:
+        raw_history = json.loads(history_json)
+    except Exception:
+        raw_history = []
+
+    chat_messages = [
+        ChatMessage(role=m.get("role", "user"), content=m.get("content", ""))
+        for m in raw_history
+        if "role" in m and "content" in m
+    ]
+
+    if not chat_messages:
+        stmt = select(GeneratedResume).where(
+            GeneratedResume.id == resume_id,
+            GeneratedResume.user_id == current_user.id,
+        )
+        res_res = await db.execute(stmt)
+        resume = res_res.scalar_one_or_none()
+        if not resume:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Currículo não encontrado."
+            )
+
+        application = None
+        if resume.application_id:
+            stmt_app = select(Application).where(Application.id == resume.application_id)
+            res_app = await db.execute(stmt_app)
+            application = res_app.scalar_one_or_none()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="resumes/partials/preview_copilot_chat.html.jinja2",
+            context={
+                "request": request,
+                "resume": resume,
+                "application": application,
+                "messages": [],
+                "prompt_skill_slug": prompt_skill_slug,
+                "history_json": history_json,
+                "error_message": (
+                    "Por favor, converse com o Copilot antes de solicitar a regeração da versão."
+                ),
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        new_resume_res = await resume_service.regenerate_resume_from_chat(
+            user=current_user,
+            resume_id=resume_id,
+            chat_messages=chat_messages,
+            prompt_skill_slug=prompt_skill_slug,
+        )
+        await db.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("web_preview_regenerate_from_chat_failed", error=str(exc), exc_info=True)
+        stmt = select(GeneratedResume).where(
+            GeneratedResume.id == resume_id,
+            GeneratedResume.user_id == current_user.id,
+        )
+        res_res = await db.execute(stmt)
+        resume = res_res.scalar_one_or_none()
+        application = None
+        if resume and resume.application_id:
+            stmt_app = select(Application).where(Application.id == resume.application_id)
+            res_app = await db.execute(stmt_app)
+            application = res_app.scalar_one_or_none()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="resumes/partials/preview_copilot_chat.html.jinja2",
+            context={
+                "request": request,
+                "resume": resume,
+                "application": application,
+                "messages": chat_messages,
+                "prompt_skill_slug": prompt_skill_slug,
+                "history_json": history_json,
+                "error_message": f"Falha na regeração da versão: {exc}",
+            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    redirect_target = f"/resumes/{new_resume_res.resume_id}?tab=editor"
+    if "HX-Request" in request.headers:
+        response = Response(status_code=status.HTTP_200_OK)
+        response.headers["HX-Redirect"] = redirect_target
+        return response
+
+    return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/resumes/{resume_id}/preview-render", response_class=HTMLResponse)
@@ -799,6 +1503,7 @@ async def resume_preview_render(
         name="resumes/partials/preview_paper.html.jinja2",
         context={
             "request": request,
+            "resume": resume,
             "content": updated_content,
             "current_user": current_user,
         },
@@ -833,6 +1538,8 @@ async def resume_save_content(
     form_data = dict(await request.form())
     updated_content = _extract_updated_resume_content(resume.structured_content, form_data)
     resume.structured_content = updated_content
+    if "language" in form_data and form_data["language"]:
+        resume.language = str(form_data["language"]).strip()
     resume.updated_at = datetime.now(UTC)
     await db.commit()
 
@@ -1228,11 +1935,13 @@ async def settings_page(
 @router.post("/settings/gemini-key", response_class=HTMLResponse)
 async def settings_save_gemini_key(
     request: Request,
-    gemini_api_key: str = Form(...),
+    gemini_api_key: str = Form(""),
+    gemini_model: str = Form("gemini-3.8-flash"),
+    gemini_thinking_level: str = Form("medium"),
     current_user: User | None = Depends(get_authenticated_web_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Cifra via AES-GCM-256 com AAD e persiste a chave pessoal do Gemini."""
+    """Cifra via AES-GCM-256 com AAD e persiste a chave do Gemini e preferências de modelo."""
     if current_user is None:
         return HTMLResponse(
             content="<script>window.location.href='/?auth_error=login_required';</script>",
@@ -1240,7 +1949,11 @@ async def settings_save_gemini_key(
         )
 
     clean_key = gemini_api_key.strip()
-    if not clean_key:
+    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+    result = await db.execute(stmt)
+    user_settings = result.scalar_one_or_none()
+
+    if not clean_key and (not user_settings or not user_settings.encrypted_gemini_api_key):
         error_html = (
             '<div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 '
             "border border-rose-200 dark:border-rose-800 text-xs font-semibold "
@@ -1254,20 +1967,31 @@ async def settings_save_gemini_key(
         return HTMLResponse(content=error_html, status_code=status.HTTP_400_BAD_REQUEST)
 
     user_aad = str(current_user.id).encode("utf-8")
-    encrypted_key = crypto_service.encrypt(clean_key, associated_data=user_aad)
+    if clean_key:
+        encrypted_key = crypto_service.encrypt(clean_key, associated_data=user_aad)
+    else:
+        encrypted_key = user_settings.encrypted_gemini_api_key if user_settings else None
 
-    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
-    result = await db.execute(stmt)
-    user_settings = result.scalar_one_or_none()
+    clean_model = gemini_model.strip() or "gemini-3.8-flash"
+    if clean_model in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"):
+        clean_model = "gemini-3.8-flash"
+    clean_thinking = gemini_thinking_level.strip().lower() or "medium"
+    if clean_thinking not in ("low", "medium", "high"):
+        clean_thinking = "medium"
 
     if not user_settings:
         user_settings = UserSettings(
             user_id=current_user.id,
             encrypted_gemini_api_key=encrypted_key,
+            gemini_model=clean_model,
+            gemini_thinking_level=clean_thinking,
         )
         db.add(user_settings)
     else:
-        user_settings.encrypted_gemini_api_key = encrypted_key
+        if clean_key:
+            user_settings.encrypted_gemini_api_key = encrypted_key
+        user_settings.gemini_model = clean_model
+        user_settings.gemini_thinking_level = clean_thinking
         user_settings.updated_at = datetime.now(UTC)
 
     await db.commit()
@@ -1275,6 +1999,8 @@ async def settings_save_gemini_key(
     logger.info(
         "web_gemini_key_saved",
         user_id=str(current_user.id),
+        model=clean_model,
+        thinking_level=clean_thinking,
     )
 
     success_html = (
@@ -1282,8 +2008,8 @@ async def settings_save_gemini_key(
         "border border-emerald-200 dark:border-emerald-800 text-xs font-semibold "
         "text-emerald-800 dark:text-emerald-300 flex items-center justify-between "
         'animate-in fade-in">\n'
-        "  <span>✅ Chave do Google Gemini salva e cifrada com sucesso "
-        "(AES-GCM-256 com AAD)!</span>\n"
+        "  <span>✅ Chave do Google Gemini salva e cifrada com sucesso (AES-GCM-256 com AAD). "
+        f"Modelo: <strong>{clean_model}</strong> (Thinking: {clean_thinking.upper()}).</span>\n"
         '  <button type="button" onclick="this.parentElement.remove()" '
         'class="text-emerald-600 dark:text-emerald-400 hover:opacity-80 cursor-pointer">'
         "✕</button>\n"
@@ -1342,7 +2068,9 @@ async def settings_test_gemini_key(
 
     start_time = time.perf_counter()
     try:
-        adapter = GeminiAIAdapter(api_key=key_to_test)
+        model = resolve_gemini_model(current_user)
+        thinking_level = resolve_gemini_thinking_level(current_user)
+        adapter = GeminiAIAdapter(api_key=key_to_test, model=model, thinking_level=thinking_level)
         await adapter.analyze_job("Software Engineer Python")
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.info(
@@ -1363,6 +2091,25 @@ async def settings_test_gemini_key(
             "</div>"
         )
         return HTMLResponse(content=success_html)
+    except ModelUnavailableError as exc:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.warning(
+            "web_gemini_key_test_model_unavailable",
+            user_id=str(current_user.id),
+            error=str(exc),
+            duration_ms=duration_ms,
+        )
+        fail_html = (
+            '<div class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 '
+            "border border-amber-200 dark:border-amber-800 text-xs font-semibold "
+            "text-amber-800 dark:text-amber-300 flex items-center justify-between "
+            'animate-in fade-in">\n'
+            f"  <span>⚠️ {exc}</span>\n"
+            '  <button type="button" onclick="this.parentElement.remove()" '
+            'class="text-amber-600 dark:text-amber-400 hover:opacity-80 cursor-pointer">✕</button>\n'
+            "</div>"
+        )
+        return HTMLResponse(content=fail_html)
     except Exception as exc:
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         logger.warning(
@@ -1372,16 +2119,16 @@ async def settings_test_gemini_key(
             duration_ms=duration_ms,
             exc_info=True,
         )
-        escaped_err = html.escape(str(exc))
         fail_html = (
-            f'<div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 '
-            f"border border-rose-200 dark:border-rose-800 text-xs font-semibold "
-            f"text-rose-800 dark:text-rose-300 flex items-center justify-between "
-            f'animate-in fade-in">\n'
-            f"  <span>❌ Falha ao validar a chave com o Google AI Studio: {escaped_err}</span>\n"
-            f'  <button type="button" onclick="this.parentElement.remove()" '
-            f'class="text-rose-600 dark:text-rose-400 hover:opacity-80 cursor-pointer">✕</button>\n'
-            f"</div>"
+            '<div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 '
+            "border border-rose-200 dark:border-rose-800 text-xs font-semibold "
+            "text-rose-800 dark:text-rose-300 flex items-center justify-between "
+            'animate-in fade-in">\n'
+            "  <span>❌ Falha ao validar a chave com o Google AI Studio. "
+            "Verifique se a chave é válida e tente novamente.</span>\n"
+            '  <button type="button" onclick="this.parentElement.remove()" '
+            'class="text-rose-600 dark:text-rose-400 hover:opacity-80 cursor-pointer">✕</button>\n'
+            "</div>"
         )
         return HTMLResponse(content=fail_html)
 
@@ -1422,6 +2169,95 @@ async def settings_remove_gemini_key(
         "</div>"
     )
     return HTMLResponse(content=info_html)
+
+
+@router.post("/settings/quick-model")
+@limiter.limit("30/minute")
+async def settings_update_quick_model(
+    request: Request,
+    model_choice: str = Form(...),
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Atualiza o modelo de IA e nível de reflexão (thinking) do usuário."""
+    if current_user is None:
+        return JSONResponse(
+            content={
+                "status": "error",
+                "message": "Autenticação necessária. Faça login novamente.",
+            },
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    if ":" in model_choice:
+        model_part, thinking_part = model_choice.split(":", 1)
+    else:
+        model_part, thinking_part = model_choice, "medium"
+
+    clean_model = model_part.strip() or "gemini-3.8-flash"
+    if clean_model in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"):
+        clean_model = "gemini-3.8-flash"
+
+    clean_thinking = thinking_part.strip().lower() or "medium"
+    if clean_thinking not in ("low", "medium", "high"):
+        clean_thinking = "medium"
+
+    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+    result = await db.execute(stmt)
+    user_settings = result.scalar_one_or_none()
+
+    if not user_settings:
+        user_settings = UserSettings(
+            user_id=current_user.id,
+            gemini_model=clean_model,
+            gemini_thinking_level=clean_thinking,
+        )
+        db.add(user_settings)
+    else:
+        user_settings.gemini_model = clean_model
+        user_settings.gemini_thinking_level = clean_thinking
+        user_settings.updated_at = datetime.now(UTC)
+
+    await db.commit()
+
+    logger.info(
+        "web_quick_model_saved",
+        user_id=str(current_user.id),
+        model=clean_model,
+        thinking_level=clean_thinking,
+    )
+
+    return JSONResponse(
+        content={
+            "status": "ok",
+            "model": clean_model,
+            "thinking_level": clean_thinking,
+            "message": f"Modelo atualizado para {clean_model} ({clean_thinking}).",
+        }
+    )
+
+
+@router.get("/settings/tokens")
+async def settings_get_tokens(
+    current_user: User | None = Depends(get_authenticated_web_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Retorna métricas em tempo real do medidor de consumo de tokens do usuário."""
+    if current_user is None:
+        return JSONResponse(
+            content={"status": "error", "message": "Autenticação necessária."},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    from app.services.token_service import get_user_token_usage
+
+    usage_data = await get_user_token_usage(db, current_user.id)
+    return JSONResponse(
+        content={
+            "status": "ok",
+            **usage_data,
+        }
+    )
 
 
 @router.post("/settings/language", response_class=HTMLResponse)

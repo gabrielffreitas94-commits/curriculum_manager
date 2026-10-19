@@ -454,7 +454,7 @@ async def test_settings_test_gemini_key_failure(async_client: AsyncClient) -> No
         )
         assert res.status_code == 200
         assert "Falha ao validar a chave com o Google AI Studio" in res.text
-        assert "API_KEY_INVALID" in res.text
+        assert "API_KEY_INVALID" not in res.text
 
 
 @pytest.mark.asyncio
@@ -776,3 +776,214 @@ async def test_settings_delete_account_lgpd_erasure(async_client: AsyncClient) -
         assert res.status_code == 200
         assert res.headers.get("hx-redirect") == "/?msg=account_deleted"
         mock_delete.assert_awaited_once_with(MOCK_WEB_USER)
+
+
+@pytest.mark.asyncio
+async def test_guardrail_settings_quick_model_unauthenticated_returns_401(
+    async_client: AsyncClient,
+) -> None:
+    """
+    VETOR DE AMEAÇA: CWE-306 (Missing Authentication for Critical Function).
+    Tentativa de modificação de parâmetros de IA e nível de raciocínio sem credenciais autenticadas.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A rota POST /settings/quick-model DEVE rejeitar requisições sem cookie de sessão com HTTP 401 e payload JSON.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Qualquer tentativa de relaxar a autenticação nesta rota abriria vetores de manipulação não autorizada de configurações.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    Acesso anônimo a POST /settings/quick-model responde obrigatoriamente com status 401 e status="error".
+    """
+    res = await async_client.post(
+        "/settings/quick-model",
+        data={"model_choice": "gemini-3.8-flash:low"},
+    )
+    assert res.status_code == 401
+    data = res.json()
+    assert data["status"] == "error"
+    assert "Autenticação necessária" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_settings_quick_model_creates_settings_success(
+    async_client: AsyncClient,
+) -> None:
+    """Valida criação e persistência das configurações de modelo rápido."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_db_settings = MagicMock()
+    mock_db_settings.scalar_one_or_none.return_value = None
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_settings,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.add") as mock_add,
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock) as mock_commit,
+    ):
+        res = await async_client.post(
+            "/settings/quick-model",
+            data={"model_choice": "gemini-3.8-flash:high"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["model"] == "gemini-3.8-flash"
+        assert data["thinking_level"] == "high"
+        mock_add.assert_called_once()
+        mock_commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_settings_quick_model_updates_existing_settings_success(
+    async_client: AsyncClient,
+) -> None:
+    """Valida atualização de modelo e thinking_level para configurações existentes."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    existing_settings = UserSettings(
+        user_id=MOCK_USER_ID,
+        gemini_model="gemini-3.7-flash",
+        gemini_thinking_level="medium",
+    )
+    mock_db_settings = MagicMock()
+    mock_db_settings.scalar_one_or_none.return_value = existing_settings
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_settings,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock) as mock_commit,
+    ):
+        res = await async_client.post(
+            "/settings/quick-model",
+            data={"model_choice": "gemini-3.8-flash:low"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["model"] == "gemini-3.8-flash"
+        assert data["thinking_level"] == "low"
+        assert existing_settings.gemini_model == "gemini-3.8-flash"
+        assert existing_settings.gemini_thinking_level == "low"
+        mock_commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_settings_quick_model_defaults_thinking_level(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que ausência ou valor inválido de thinking_level assume 'medium'."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    existing_settings = UserSettings(
+        user_id=MOCK_USER_ID,
+        gemini_model="gemini-3.8-flash",
+        gemini_thinking_level="high",
+    )
+    mock_db_settings = MagicMock()
+    mock_db_settings.scalar_one_or_none.return_value = existing_settings
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_settings,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock),
+    ):
+        res = await async_client.post(
+            "/settings/quick-model",
+            data={"model_choice": "gemini-3.7-flash:invalid"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["model"] == "gemini-3.7-flash"
+        assert data["thinking_level"] == "medium"
+        assert existing_settings.gemini_model == "gemini-3.7-flash"
+        assert existing_settings.gemini_thinking_level == "medium"
+
+
+@pytest.mark.asyncio
+async def test_guardrail_settings_tokens_unauthenticated_returns_401(
+    async_client: AsyncClient,
+) -> None:
+    """VETOR DE AMEAÇA: Acesso não autenticado a telemetria de consumo de tokens (CWE-306).
+    Um invasor não autenticado ou ator não autorizado poderia mapear a atividade de uso
+    de IA e scraping de quotas da plataforma.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A rota GET /settings/tokens deve rejeitar estritamente qualquer requisição sem sessão
+    ativa com HTTP 401 Unauthorized e payload de erro em JSON.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Se um desenvolvedor ou agente IA tornar o endpoint público ou afrouxar a dependência
+    get_authenticated_web_user para None opcional sem verificação, métricas sensíveis de
+    consumo vazariam publicamente.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    A resposta sem cookie de sessão deve retornar impreterivelmente status_code == 401
+    com mensagem de erro clara.
+    """
+    res = await async_client.get("/settings/tokens")
+    assert res.status_code == 401
+    data = res.json()
+    assert data["status"] == "error"
+    assert "Autenticação necessária" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_settings_tokens_authenticated_success(
+    async_client: AsyncClient,
+) -> None:
+    """Valida retorno bem-sucedido de métricas de tokens para usuário autenticado."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_token_data = {
+        "tokens_used_today": 1200,
+        "requests_used_today": 3,
+        "tokens_used_total": 45000,
+        "formatted_tokens_today": "1.200",
+        "formatted_tokens_total": "45.000",
+    }
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.token_service.get_user_token_usage",
+            new_callable=AsyncMock,
+            return_value=mock_token_data,
+        ) as mock_get_tokens,
+    ):
+        res = await async_client.get("/settings/tokens")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["tokens_used_today"] == 1200
+        assert data["requests_used_today"] == 3
+        assert data["tokens_used_total"] == 45000
+        assert data["formatted_tokens_today"] == "1.200"
+        assert data["formatted_tokens_total"] == "45.000"
+        mock_get_tokens.assert_awaited_once()
+
+

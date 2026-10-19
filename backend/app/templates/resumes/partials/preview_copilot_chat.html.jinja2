@@ -1,0 +1,196 @@
+<div id="preview-copilot-container" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col h-[580px]">
+  <!-- Topo do Chat -->
+  <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-lg font-bold">
+        🤖
+      </div>
+      <div>
+        <h3 class="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+          Copilot IA Assistente
+          <span class="inline-flex items-center px-2 py-0.2 rounded-full text-[9px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+            Online
+          </span>
+        </h3>
+        <p class="text-[10px] text-slate-400 dark:text-slate-500">
+          Metodologia: <strong class="uppercase font-mono text-indigo-600 dark:text-indigo-400">{{ prompt_skill_slug or 'google-xyz' }}</strong> • Salvo na Vaga
+        </p>
+      </div>
+    </div>
+    <span class="text-[10px] text-slate-400 hidden sm:inline-block">Dossiê Mestre Ativo</span>
+  </div>
+
+  <!-- Barra de Ação: Regerar Nova Versão com Base na Conversa (Versão A) -->
+  <div class="my-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50/90 to-purple-50/90 dark:from-indigo-950/40 dark:to-purple-950/30 border border-indigo-200/80 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs">
+    <div class="flex items-center gap-2">
+      <span class="text-base select-none">✨</span>
+      <div>
+        <span class="text-xs font-bold text-indigo-950 dark:text-indigo-200 block">
+          Alinhamento com o Copilot
+        </span>
+        <span class="text-[10px] text-indigo-700 dark:text-indigo-300">
+          {% if messages and (messages | length > 0) %}
+            {{ messages | length }} interaçõ{{ 'es' if (messages | length > 1) else 'ão' }} no chat. Satisfeito com as ideias?
+          {% else %}
+            Converse com o Copilot para alinhar o tom ou ênfase antes de regerar.
+          {% endif %}
+        </span>
+      </div>
+    </div>
+    
+    <button 
+      type="button"
+      id="btn-regenerate-from-chat"
+      hx-post="/resumes/{{ resume.id }}/regenerate-from-chat"
+      hx-include="#preview-copilot-form"
+      hx-target="#preview-copilot-container"
+      hx-indicator="#preview-copilot-regenerating"
+      {% if not messages or (messages | length == 0) %}
+        disabled
+        title="Envie ao menos uma mensagem para alinhar as mudanças antes de regerar"
+        class="opacity-50 cursor-not-allowed px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all"
+      {% else %}
+        class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+      {% endif %}>
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+      <span>Regerar Versão (v{{ (resume.version_number or 1) + 1 }})</span>
+    </button>
+  </div>
+
+  <!-- Indicador de Regeração de Versão -->
+  <div id="preview-copilot-regenerating" class="htmx-indicator mb-2 p-3 rounded-xl bg-indigo-100/90 dark:bg-indigo-950/80 border border-indigo-300 dark:border-indigo-700 text-xs text-indigo-900 dark:text-indigo-200 flex items-center gap-3">
+    <div class="animate-spin text-base">⟳</div>
+    <div class="space-y-0.5">
+      <div class="font-bold">Sintetizando Nova Versão (v{{ (resume.version_number or 1) + 1 }})...</div>
+      <div class="text-[11px] text-indigo-700 dark:text-indigo-300">Aplicando todos os direcionamentos e preferências discutidos no chat.</div>
+    </div>
+  </div>
+
+  <!-- Feed de Mensagens Rolável -->
+  <div id="preview-copilot-messages" class="flex-1 overflow-y-auto space-y-3 py-3 pr-1 text-xs" role="log" aria-live="polite" aria-label="Histórico de mensagens com o Copilot">
+    {% if not messages %}
+      <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
+        <p class="text-slate-700 dark:text-slate-300 leading-relaxed">
+          👋 <strong>Olá!</strong> Estou aqui para refinar seu currículo em tempo real para a vaga de <strong>{{ application.job_title if application else 'Engenharia' }}</strong> na <strong>{{ application.company_name if application else 'Oportunidade' }}</strong>.
+        </p>
+        <div class="space-y-1 pt-1">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+            Sugestões rápidas:
+          </span>
+          <div class="flex flex-col gap-1.5">
+            <button type="button" 
+                    onclick="setPreviewCopilotMessage(this.innerText)"
+                    class="p-2 rounded-lg text-left bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer text-[11px]">
+              💡 Como reescrever meu resumo para destacar liderança e impacto?
+            </button>
+            <button type="button" 
+                    onclick="setPreviewCopilotMessage(this.innerText)"
+                    class="p-2 rounded-lg text-left bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer text-[11px]">
+              🎯 Quais competências da vaga ainda não constam no meu currículo?
+            </button>
+            <button type="button" 
+                    onclick="setPreviewCopilotMessage(this.innerText)"
+                    class="p-2 rounded-lg text-left bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer text-[11px]">
+              ⚡ Sugira bullets com a fórmula Google XYZ para minha última empresa
+            </button>
+            <button type="button" 
+                    onclick="setPreviewCopilotMessage(this.innerText)"
+                    class="p-2 rounded-lg text-left bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer text-[11px]">
+              📋 Quais experiências do meu Dossiê Mestre têm mais aderência aos requisitos?
+            </button>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% for msg in messages %}
+      {% if msg.role == 'user' %}
+        <div class="flex justify-end">
+          <div class="bg-indigo-600 text-white rounded-2xl rounded-tr-xs px-3.5 py-2 max-w-[85%] shadow-xs leading-relaxed whitespace-pre-line text-xs">
+            {{ msg.content }}
+          </div>
+        </div>
+      {% else %}
+        <div class="flex items-start gap-2 max-w-[92%]">
+          <div class="w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
+            🤖
+          </div>
+          <div class="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-2xl rounded-tl-xs p-3 shadow-xs leading-relaxed whitespace-pre-line space-y-2 text-xs">
+            <div>{{ msg.content }}</div>
+            <div class="flex items-center gap-1.5 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+              <button 
+                type="button" 
+                onclick="navigator.clipboard.writeText(this.parentElement.previousElementSibling.innerText); this.innerText='Copiado! ✓'; setTimeout(() => this.innerText='📋 Copiar', 1500);" 
+                class="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[10px] font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 cursor-pointer transition-colors">
+                📋 Copiar
+              </button>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    <!-- Indicador de Carregamento com HTMX -->
+    <div id="preview-copilot-loading" class="htmx-indicator flex items-center gap-2 text-xs text-indigo-600 dark:text-indigo-400 py-1.5">
+      <span class="animate-spin text-sm">⟳</span>
+      <span>O Copilot está formulando a recomendação...</span>
+    </div>
+
+    {% if error_message %}
+      <div class="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300">
+        ⚠️ {{ error_message }}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Formulário de Envio do Chat -->
+  <form 
+    id="preview-copilot-form" 
+    hx-post="/resumes/{{ resume.id }}/copilot-chat" 
+    hx-target="#preview-copilot-container" 
+    hx-swap="outerHTML" 
+    hx-indicator="#preview-copilot-loading"
+    class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
+    
+    <input type="hidden" name="history_json" value="{{ history_json | default('[]') | e }}">
+    <input type="hidden" name="prompt_skill_slug" value="{{ prompt_skill_slug | default('google-xyz') }}">
+
+    <div class="flex-1 relative">
+      <input 
+        type="text" 
+        id="preview-copilot-input"
+        name="message" 
+        placeholder="Pergunte ao Copilot como aprimorar seu currículo..." 
+        required 
+        autocomplete="off"
+        class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-400">
+    </div>
+
+    <button 
+      type="submit" 
+      aria-label="Enviar mensagem para o Copilot de IA"
+      class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer">
+      <span>Enviar</span>
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+      </svg>
+    </button>
+  </form>
+
+  <script>
+    (function() {
+      var box = document.getElementById('preview-copilot-messages');
+      if (box) { box.scrollTop = box.scrollHeight; }
+    })();
+
+    function setPreviewCopilotMessage(text) {
+      var field = document.getElementById('preview-copilot-input');
+      if (field) {
+        field.value = text;
+        field.focus();
+      }
+    }
+  </script>
+</div>

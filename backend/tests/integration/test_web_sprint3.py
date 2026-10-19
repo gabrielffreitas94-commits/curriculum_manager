@@ -1200,4 +1200,352 @@ def test_extract_updated_resume_content_variations() -> None:
     updated2 = _extract_updated_resume_content(base, form_single)
     assert updated2["selected_experiences"][0]["start_date"] == "2024"
     assert updated2["selected_experiences"][0]["end_date"] == ""
-    assert updated2["selected_experiences"][0]["end_date"] == ""
+
+    # Caso 3: Inclusão de tech stack via exp_0_tech
+    form_tech = {
+        "exp_0_title": "Staff",
+        "exp_0_company": "TechCo",
+        "exp_0_period": "2022 — 2024",
+        "exp_0_tech": "Python, Kubernetes, AWS, Terraform",
+        "exp_0_bullets": "Liderança de 10 engenheiros",
+    }
+    updated3 = _extract_updated_resume_content(base, form_tech)
+    assert updated3["selected_experiences"][0]["tech_stack"] == [
+        "Python",
+        "Kubernetes",
+        "AWS",
+        "Terraform",
+    ]
+
+
+# ==============================================================================
+# GUARDRAILS E FLUXOS DO COPILOT STUDIO NO PREVIEW
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_guardrail_resume_preview_copilot_chat_unauthenticated_returns_401(
+    async_client: AsyncClient,
+) -> None:
+    """Valida barreira fail-closed que rejeita interações com o Copilot no Live Editor sem sessão ativa.
+
+    VETOR DE AMEAÇA:
+    - CWE-306: Missing Authentication for Critical Function.
+    - Impacto Potencial: Esgotamento de cotas de IA e manipulação espúria de anotações da candidatura.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    - Requisições anônimas DEVEM ser rejeitadas com HTTP 401 e script para login.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    - Remover a checagem de usuário autenticado permitiria consultas livres à API upstream de IA.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    - POST /resumes/{uuid}/copilot-chat sem autenticação DEVE responder exatamente status 401.
+    """
+    res = await async_client.post(
+        f"/resumes/{MOCK_RESUME_ID}/copilot-chat",
+        data={"message": "Como destacar Python no currículo?"},
+    )
+    assert res.status_code == 401
+    assert "login_required" in res.text
+
+
+@pytest.mark.asyncio
+async def test_resume_preview_copilot_chat_empty_message_returns_400(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que mensagens vazias para o Copilot no Live Editor retornam 400 com aviso claro."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    mock_db_result = MagicMock()
+    mock_db_result.scalar_one_or_none.return_value = MOCK_RESUME
+
+    mock_db_app = MagicMock()
+    mock_db_app.scalar_one_or_none.return_value = MOCK_APPLICATION
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            side_effect=[mock_db_result, mock_db_app],
+        ),
+    ):
+        res = await async_client.post(
+            f"/resumes/{MOCK_RESUME_ID}/copilot-chat",
+            data={"message": "   "},
+        )
+        assert res.status_code == 400
+        assert "digite uma mensagem para o Copilot" in res.text
+
+
+@pytest.mark.asyncio
+async def test_resume_preview_copilot_chat_not_found_returns_404(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que tentativa de chat em currículo inexistente retorna 404."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    mock_db_result = MagicMock()
+    mock_db_result.scalar_one_or_none.return_value = None
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_result,
+        ),
+    ):
+        res = await async_client.post(
+            f"/resumes/{uuid.uuid4()}/copilot-chat",
+            data={"message": "Dúvida sobre a vaga"},
+        )
+        assert res.status_code == 404
+        assert "Currículo não encontrado" in res.text
+
+
+@pytest.mark.asyncio
+async def test_resume_preview_copilot_chat_success_and_persists_note(
+    async_client: AsyncClient,
+) -> None:
+    """Valida interação conversacional no Live Editor persistindo o histórico na vaga."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    mock_db_result = MagicMock()
+    mock_db_result.scalar_one_or_none.return_value = MOCK_RESUME
+
+    mock_db_app = MagicMock()
+    mock_db_app.scalar_one_or_none.return_value = MOCK_APPLICATION
+
+    mock_copilot = MagicMock()
+    mock_copilot.chat = AsyncMock(
+        return_value="Sugiro reformular o resumo enfatizando 'Arquitetura Hexagonal com latência p99 reduzida em 30%'."
+    )
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            side_effect=[mock_db_result, mock_db_app],
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.add") as mock_add,
+        patch("app.api.web.create_copilot_service", return_value=mock_copilot),
+    ):
+        res = await async_client.post(
+            f"/resumes/{MOCK_RESUME_ID}/copilot-chat",
+            data={
+                "message": "Como posso destacar arquitetura hexagonal?",
+                "prompt_skill_slug": "google-xyz",
+                "history_json": "[]",
+            },
+        )
+        assert res.status_code == 200
+        assert "preview-copilot-container" in res.text
+        assert "Arquitetura Hexagonal com latência p99" in res.text
+        assert "Como posso destacar arquitetura hexagonal?" in res.text
+        # Garante que duas notas (usuário e IA) foram adicionadas para persistência
+        assert mock_add.call_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_resume_preview_copilot_chat_service_error_handled(
+    async_client: AsyncClient,
+) -> None:
+    """Valida tratamento gracioso caso a chamada de IA falhe durante o chat no preview."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    mock_db_result = MagicMock()
+    mock_db_result.scalar_one_or_none.return_value = MOCK_RESUME
+
+    mock_db_app = MagicMock()
+    mock_db_app.scalar_one_or_none.return_value = MOCK_APPLICATION
+
+    mock_copilot = MagicMock()
+    mock_copilot.chat = AsyncMock(side_effect=RuntimeError("Falha de conexão com Gemini"))
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            side_effect=[mock_db_result, mock_db_app],
+        ),
+        patch("app.api.web.create_copilot_service", return_value=mock_copilot),
+    ):
+        res = await async_client.post(
+            f"/resumes/{MOCK_RESUME_ID}/copilot-chat",
+            data={
+                "message": "Ajuda com resumo",
+                "prompt_skill_slug": "google-xyz",
+                "history_json": "[]",
+            },
+        )
+        assert res.status_code == 200
+        assert "Falha ao comunicar com o assistente de IA" in res.text
+        assert "Falha de conexão com Gemini" not in res.text
+
+
+@pytest.mark.asyncio
+async def test_resume_preview_page_match_tab_first_and_unified_scroll(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que a aba Vaga & Match é a primeira ativa e que o layout tem scroll unificado sem sticky top-20."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    mock_db_result_resume = MagicMock()
+    mock_db_result_resume.scalar_one_or_none.return_value = MOCK_RESUME
+
+    mock_db_result_app = MagicMock()
+    mock_db_result_app.scalar_one_or_none.return_value = MOCK_APPLICATION
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            side_effect=[mock_db_result_resume, mock_db_result_app],
+        ),
+    ):
+        res = await async_client.get(f"/resumes/{MOCK_RESUME_ID}/preview")
+        assert res.status_code == 200
+        html = res.text
+
+        # 4º A tab de match deve ser a primeira a aparecer
+        assert 'id="panel-job"' in html
+        assert 'id="tab-btn-job"' in html
+        assert 'aria-selected="true"' in html
+        assert 'id="panel-editor" class="hidden' in html
+
+        # 1º O scroll deve scrollar ambas as partes juntos (sem travas sticky no preview)
+        assert "sticky top-20" not in html
+
+        # 3º Deve ter seleção de idioma
+        assert 'id="top-resume-language"' in html
+        assert 'id="editor-resume-language"' in html
+        assert "en-US" in html
+        assert "es-ES" in html
+        assert "pt-BR" in html
+
+
+@pytest.mark.asyncio
+async def test_resume_preview_render_with_language_and_education_certifications(
+    async_client: AsyncClient,
+) -> None:
+    """Valida renderização com idioma inglês e inclusão de formação e certificação."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    mock_db_result = MagicMock()
+    mock_db_result.scalar_one_or_none.return_value = MOCK_RESUME
+
+    form_payload = {
+        "language": "en-US",
+        "target_title": "Lead Software Engineer",
+        "professional_summary": "Extensive experience in distributed systems.",
+        "skills_list": "Python, Cloud, Docker",
+        "exp_0_title": "Senior Architect",
+        "exp_0_company": "Tech Corp",
+        "exp_0_period": "2021 — 2024",
+        "exp_0_bullets": "Built scalable cloud pipelines.",
+        "edu_0_degree": "Bachelor of Science",
+        "edu_0_institution": "MIT",
+        "edu_0_field": "Computer Science",
+        "edu_0_period": "2016 — 2020",
+        "cert_0_name": "Google Cloud Architect",
+        "cert_0_issuer": "Google Cloud",
+    }
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_result,
+        ),
+    ):
+        res = await async_client.post(
+            f"/resumes/{MOCK_RESUME_ID}/preview-render",
+            data=form_payload,
+        )
+        assert res.status_code == 200
+        html = res.text
+
+        # Títulos de seções traduzidos para inglês
+        assert "Professional Summary" in html
+        assert "Professional Experience" in html
+        assert "Education" in html
+        assert "Certifications" in html
+
+        # Conteúdo inserido dinamicamente
+        assert "Lead Software Engineer" in html
+        assert "Bachelor of Science" in html
+        assert "MIT" in html
+        assert "Google Cloud Architect" in html
+
+
+@pytest.mark.asyncio
+async def test_resume_save_persists_language_and_sections(
+    async_client: AsyncClient,
+) -> None:
+    """Valida persistência de alterações manuais incluindo idioma do currículo."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    mock_db_result = MagicMock()
+    mock_db_result.scalar_one_or_none.return_value = MOCK_RESUME
+
+    form_payload = {
+        "language": "es-ES",
+        "target_title": "Ingeniero Principal de Software",
+        "professional_summary": "Resumen en español.",
+        "skills_list": "Python, Django",
+    }
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_result,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock),
+    ):
+        res = await async_client.post(
+            f"/resumes/{MOCK_RESUME_ID}/save",
+            data=form_payload,
+        )
+        assert res.status_code == 200
+        assert "Alterações do currículo salvas com sucesso" in res.text
+        assert MOCK_RESUME.language == "es-ES"
+        assert MOCK_RESUME.structured_content["header"]["target_title"] == "Ingeniero Principal de Software"
+
+

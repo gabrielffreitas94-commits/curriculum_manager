@@ -2,219 +2,1645 @@
 
 {% block title %}Editor e Visualização ao Vivo — ThothCVs AI{% endblock %}
 
-{% block main_class %}w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6{% endblock %}
+{% block main_class %}w-full max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex-grow flex flex-col{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
-  <!-- Topo: Navegação e Barra de Ações Rápidas -->
-  <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-    <div class="flex items-center gap-3">
-      <a href="/resumes/new" class="p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400" title="Voltar ao Gerador">
+<style>
+  @media print {
+    body * {
+      visibility: hidden !important;
+    }
+    #resume-paper-container, #resume-paper-container * {
+      visibility: visible !important;
+    }
+    #resume-paper-container {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+  }
+
+  /* Canvas Zoom Styling */
+  #resume-zoom-wrapper {
+    transition: transform 0.15s ease-out;
+    transform-origin: top center;
+  }
+</style>
+
+<div class="space-y-4 flex-grow flex flex-col">
+  <!-- ========================================================================= -->
+  <!-- 1. TOOLBAR SUPERIOR DO STUDIO (Hierarquia, Status e Ações Consolidadas)   -->
+  <!-- ========================================================================= -->
+  <header class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 sm:px-5 sm:py-3.5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
+    
+    <!-- Lado Esquerdo: Navegação, Título do Documento, Versão, Match e Status -->
+    <div class="flex items-center gap-3 min-w-0">
+      <a href="/applications" 
+         class="p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400 shrink-0 cursor-pointer" 
+         title="Voltar ao ATS Manager">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
         </svg>
       </a>
-      <div>
-        <div class="flex items-center gap-2">
-          <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 truncate">
             Currículo Sob Medida
           </h1>
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-mono">
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-mono">
             v{{ resume.version_number }}
           </span>
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if resume.match_percentage >= 75 %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800{% else %}bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800{% endif %}">
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold {% if resume.match_percentage >= 75 %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800{% else %}bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800{% endif %}">
             🎯 {{ "%.1f"|format(resume.match_percentage) }}% Match
           </span>
+
+          <!-- Indicador de Status de Sincronização -->
+          <span id="top-save-indicator" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            <span id="top-save-text">Salvo</span>
+          </span>
         </div>
-        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+
+        <p class="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
           Vaga: <strong>{{ application.job_title if application else 'Engenheiro de Software' }}</strong> na <strong>{{ application.company_name if application else 'Oportunidade' }}</strong>
         </p>
       </div>
     </div>
 
-    <!-- Botões de Ação: Auditoria, Download e Salvar -->
-    <div class="flex flex-wrap items-center gap-2">
-      <!-- Botão de Auditoria Grounding -->
+    <!-- Lado Direito: Seletor de Idioma, Ações Primárias e Menu Dropdown -->
+    <div class="flex items-center gap-2 shrink-0">
+      
+      <!-- Seletor Rápido de Idioma -->
+      <div class="flex items-center gap-1 px-2 py-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 shadow-xs">
+        <span class="text-xs">🌐</span>
+        <label for="top-resume-language" class="sr-only">Idioma do Currículo</label>
+        <select 
+          id="top-resume-language" 
+          onchange="syncLanguage(this.value)"
+          class="text-xs font-semibold bg-transparent text-slate-800 dark:text-slate-200 focus:outline-hidden cursor-pointer"
+          title="Selecione o idioma de diagramação do currículo">
+          <option value="pt-BR" {% if (resume.language or 'pt-BR') == 'pt-BR' %}selected{% endif %}>🇧🇷 PT-BR</option>
+          <option value="en-US" {% if resume.language == 'en-US' %}selected{% endif %}>🇺🇸 EN-US</option>
+          <option value="es-ES" {% if resume.language == 'es-ES' %}selected{% endif %}>🇪🇸 ES-ES</option>
+          <option value="pt-PT" {% if resume.language == 'pt-PT' %}selected{% endif %}>🇵🇹 PT-PT</option>
+          <option value="en-GB" {% if resume.language == 'en-GB' %}selected{% endif %}>🇬🇧 EN-GB</option>
+        </select>
+        <button 
+          type="button"
+          id="top-btn-translate"
+          onclick="executeResumeTranslation()"
+          class="px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-[11px] font-semibold transition-colors cursor-pointer"
+          title="Traduzir o currículo diretamente para este idioma">
+          Traduzir
+        </button>
+      </div>
+
+      <!-- Ação Secundária: Salvar -->
       <button 
         type="button"
-        hx-post="/resumes/{{ resume.id }}/verify-grounding"
-        hx-include="#resume-editor-form"
-        hx-target="#grounding-audit-container"
-        hx-indicator="#grounding-spinner"
-        class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer">
-        <span>🛡️ Auditar Fidelidade Factual</span>
-        <span id="grounding-spinner" class="htmx-indicator animate-spin">⟳</span>
+        id="btn-top-save"
+        onclick="triggerStudioSave()"
+        class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+        title="Salvar alterações no currículo">
+        <span id="btn-save-icon">💾</span>
+        <span>Salvar</span>
       </button>
 
-      <!-- Botão Salvar Edições -->
-      <button 
-        type="button"
-        onclick="htmx.trigger('#resume-editor-form', 'saveResume')"
-        class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer">
-        <span>💾 Salvar</span>
-      </button>
-
-      <!-- Download PDF -->
+      <!-- Ação Primária em Destaque: Baixar PDF -->
       <a 
         href="/resumes/{{ resume.id }}/export/pdf" 
         target="_blank"
-        class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors">
-        <svg class="w-3.5 h-3.5 text-rose-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs hover:shadow-sm transition-all cursor-pointer"
+        title="Baixar arquivo PDF com diagramação profissional pronta para ATS">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
-        <span>PDF</span>
+        <span>Baixar PDF</span>
       </a>
 
-      <!-- Download DOCX -->
-      <a 
-        href="/resumes/{{ resume.id }}/export/docx" 
-        target="_blank"
-        class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors">
-        <svg class="w-3.5 h-3.5 text-sky-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        <span>DOCX</span>
-      </a>
+      <!-- Menu Dropdown: Mais Opções (⋯) -->
+      <div class="relative" id="studio-more-dropdown-container">
+        <button 
+          type="button"
+          id="btn-studio-more"
+          onclick="toggleStudioMoreMenu()"
+          aria-haspopup="true"
+          aria-expanded="false"
+          class="p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+          title="Mais opções de exportação, auditoria e inteligência">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+          </svg>
+        </button>
+
+        <!-- Dropdown Flutuante -->
+        <div 
+          id="studio-more-menu"
+          class="hidden absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl z-50 p-2 space-y-1 animate-in fade-in zoom-in-95">
+          
+          <div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Exportação & Impressão
+          </div>
+
+          <!-- DOCX -->
+          <a 
+            href="/resumes/{{ resume.id }}/export/docx" 
+            target="_blank"
+            class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+            <span class="text-sky-500 font-bold">📄</span>
+            <span>Baixar em DOCX (Word)</span>
+          </a>
+
+          <!-- Imprimir Folha A4 -->
+          <button 
+            type="button"
+            onclick="window.print(); toggleStudioMoreMenu();"
+            class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer text-left">
+            <span>🖨️</span>
+            <span>Imprimir Folha A4</span>
+          </button>
+
+          <div class="my-1 border-t border-slate-100 dark:border-slate-800"></div>
+
+          <div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Auditoria & Inteligência
+          </div>
+
+          <!-- Auditar Fidelidade Factual (Grounding) -->
+          <button 
+            type="button"
+            hx-post="/resumes/{{ resume.id }}/verify-grounding"
+            hx-include="#resume-editor-form"
+            hx-target="#grounding-audit-container"
+            hx-indicator="#grounding-spinner"
+            onclick="toggleStudioMoreMenu()"
+            class="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer text-left">
+            <div class="flex items-center gap-2.5">
+              <span>🛡️</span>
+              <span>Auditar Fidelidade Factual</span>
+            </div>
+            <span id="grounding-spinner" class="htmx-indicator animate-spin text-indigo-500">⟳</span>
+          </button>
+
+          <!-- Seletor Rápido de Modelo / Thinking -->
+          {% set cur_model = current_user.settings.gemini_model if (current_user and current_user.settings and current_user.settings.gemini_model) else 'gemini-3.8-flash' %}
+          {% set cur_thinking = current_user.settings.gemini_thinking_level if (current_user and current_user.settings and current_user.settings.gemini_thinking_level) else 'medium' %}
+          {% set current_model_choice = cur_model ~ ':' ~ cur_thinking %}
+          <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-1.5">
+            <div class="flex items-center justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+              <span class="flex items-center gap-1.5">
+                <span>🧠</span> Modelo IA & Raciocínio
+              </span>
+              <span id="top-model-status" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold hidden">✓ Salvo</span>
+              <span id="top-model-spinner" class="text-[10px] text-indigo-500 animate-spin hidden">⟳</span>
+            </div>
+            <label for="top-gemini-model" class="sr-only">Modelo de IA e Nível de Raciocínio</label>
+            <select 
+              id="top-gemini-model" 
+              onchange="updateQuickModel(this.value)"
+              class="w-full text-xs font-medium bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg p-1.5 border border-slate-200 dark:border-slate-700 focus:outline-hidden cursor-pointer">
+              <optgroup label="Gemini 3.8 Flash" class="font-semibold">
+                <option value="gemini-3.8-flash:low" {% if current_model_choice == 'gemini-3.8-flash:low' %}selected{% endif %}>⚡ Gemini 3.8 Flash (Low)</option>
+                <option value="gemini-3.8-flash:medium" {% if current_model_choice == 'gemini-3.8-flash:medium' or not current_user or not current_user.settings %}selected{% endif %}>⚡ Gemini 3.8 Flash (Medium)</option>
+                <option value="gemini-3.8-flash:high" {% if current_model_choice == 'gemini-3.8-flash:high' %}selected{% endif %}>⚡ Gemini 3.8 Flash (High)</option>
+              </optgroup>
+              <optgroup label="Outros Modelos" class="font-semibold">
+                <option value="gemini-3.7-flash:medium" {% if cur_model == 'gemini-3.7-flash' %}selected{% endif %}>Gemini 3.7 Flash</option>
+                <option value="gemini-3.6-flash:medium" {% if cur_model == 'gemini-3.6-flash' %}selected{% endif %}>Gemini 3.6 Flash</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <div class="my-1 border-t border-slate-100 dark:border-slate-800"></div>
+
+          <!-- Link Kanban ATS -->
+          <a 
+            href="/applications" 
+            class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
+            <span>💼</span>
+            <span>Acessar Manager ATS</span>
+          </a>
+        </div>
+      </div>
+
     </div>
-  </div>
+  </header>
 
-  <!-- Alertas de Feedback / Notificações -->
-  <div id="save-feedback"></div>
-  <div id="grounding-audit-container"></div>
+  <!-- Notificações e Banners de Feedback -->
+  <div id="save-feedback" class="empty:hidden"></div>
+  <div id="grounding-audit-container" class="empty:hidden"></div>
 
-  <!-- Layout Live Split View: Editor (Esquerda) e Documento A4 (Direita) -->
-  <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+  <!-- ========================================================================= -->
+  <!-- 2. LAYOUT STUDIO WORKSPACE: 2 COLUNAS (Ferramentas + Mesa de Trabalho A4) -->
+  <!-- ========================================================================= -->
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start flex-grow">
     
-    <!-- COLUNA DA ESQUERDA: Formulário Estruturado do Currículo (5 colunas) -->
-    <div class="lg:col-span-5 space-y-6">
-      <form 
-        id="resume-editor-form"
-        hx-post="/resumes/{{ resume.id }}/preview-render"
-        hx-trigger="input delay:350ms, change"
-        hx-target="#resume-paper-container"
-        hx-indicator="#preview-spinner"
-        class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-5">
-        
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-          <h2 class="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <span>✏️</span> Editor de Campos do Currículo
-          </h2>
-          <span class="text-[11px] text-slate-400">Edição em tempo real</span>
-        </div>
+    <!-- ======================================================================= -->
+    <!-- COLUNA DA ESQUERDA (5 Colunas): Abas de Trabalho com Scroll Dedicado   -->
+    <!-- ======================================================================= -->
+    <div class="lg:col-span-5 space-y-3 lg:max-h-[calc(100vh-8.5rem)] lg:overflow-y-auto lg:pr-1 scrollbar-thin">
+      
+      <!-- Navegação das 3 Abas Essenciais do Studio (Unificação Semântica) -->
+      <nav class="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-xs font-semibold shrink-0" role="tablist" aria-label="Abas do Workspace">
+        <!-- Tab 1: Vaga & Match (Primeira por padrão) -->
+        <button type="button" 
+                id="tab-btn-job" 
+                role="tab" 
+                aria-selected="true" 
+                aria-controls="panel-job"
+                onclick="switchStudioTab('job')" 
+                class="flex-1 py-2 px-3 rounded-lg transition-all bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs cursor-pointer text-center truncate">
+          📋 Vaga & Match
+        </button>
 
-        <!-- 1. TÍTULO PRETENDIDO -->
-        <div class="space-y-1">
-          <label for="input-target-title" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Título Profissional Alvo
-          </label>
-          <input 
-            type="text" 
-            id="input-target-title"
-            name="target_title" 
-            value="{{ content.header.target_title or '' }}" 
-            class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
-        </div>
+        <!-- Tab 2: Editor do Currículo (Unificado com Dossiê) -->
+        <button type="button" 
+                id="tab-btn-editor" 
+                role="tab" 
+                aria-selected="false" 
+                aria-controls="panel-editor"
+                onclick="switchStudioTab('editor')" 
+                class="flex-1 py-2 px-3 rounded-lg transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer text-center truncate">
+          ✏️ Editor do Currículo
+        </button>
 
-        <!-- 2. RESUMO PROFISSIONAL -->
-        <div class="space-y-1">
-          <label for="input-summary" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Resumo Profissional Narrativo
-          </label>
-          <textarea 
-            id="input-summary"
-            name="professional_summary" 
-            rows="5"
-            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden leading-relaxed">{{ content.professional_summary or '' }}</textarea>
-          <span class="text-[10px] text-slate-400">Enfatize conquistas quantificáveis conforme a metodologia escolhida.</span>
-        </div>
+        <!-- Tab 3: Copilot IA -->
+        <button type="button" 
+                id="tab-btn-copilot" 
+                role="tab" 
+                aria-selected="false" 
+                aria-controls="panel-copilot"
+                onclick="switchStudioTab('copilot')" 
+                class="flex-1 py-2 px-3 rounded-lg transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer text-center truncate flex items-center justify-center gap-1">
+          <span>🤖 Copilot IA</span>
+          {% if chat_messages %}
+          <span class="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+          {% endif %}
+        </button>
+      </nav>
 
-        <!-- 3. EXPERIÊNCIAS PROFISSIONAIS -->
-        <div class="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-              Experiências Selecionadas
+      <!-- ===================================================================== -->
+      <!-- PAINEL 1 (ATIVO POR PADRÃO): VAGA & ANÁLISE DE MATCH ATS              -->
+      <!-- ===================================================================== -->
+      <div id="panel-job" class="space-y-4" role="tabpanel">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+          
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h2 class="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {{ application.job_title if application else 'Vaga Alvo' }}
+              </h2>
+              <p class="text-xs text-slate-500">
+                {{ application.company_name if application else 'Empresa' }} • {{ application.work_model or 'Remoto' }}
+              </p>
+            </div>
+            <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-mono">
+              {{ "%.1f"|format(resume.match_percentage) }}% Aderência
             </span>
           </div>
 
-          {% for exp in (content.selected_experiences or content.experiences) %}
-          {% set exp_idx = loop.index0 %}
-          <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
-            <div class="grid grid-cols-2 gap-2">
-              <div>
-                <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Cargo</label>
-                <input 
-                  type="text" 
-                  name="exp_{{ exp_idx }}_title" 
-                  value="{{ exp.position_title }}" 
-                  class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
-              </div>
-              <div>
-                <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Empresa</label>
-                <input 
-                  type="text" 
-                  name="exp_{{ exp_idx }}_company" 
-                  value="{{ exp.company_name }}" 
-                  class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+          <!-- Ação Rápida para Ir ao Editor -->
+          <div class="p-3.5 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200/80 dark:border-indigo-900/60 flex items-center justify-between gap-3">
+            <div class="text-xs text-indigo-900 dark:text-indigo-200">
+              <span class="font-bold">Pronto para personalizar este currículo?</span>
+              <p class="text-[11px] opacity-80">Edite textos, bullet points ou importe outras experiências do seu histórico.</p>
+            </div>
+            <button 
+              type="button" 
+              onclick="switchStudioTab('editor')"
+              class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shrink-0 cursor-pointer shadow-xs transition-colors">
+              Ir para o Editor ➔
+            </button>
+          </div>
+
+          <!-- Matriz de Requisitos da Vaga -->
+          {% if resume.match_analysis %}
+          <div class="space-y-3">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Análise de Requisitos (Match ATS)
+            </h3>
+
+            {% if resume.match_analysis.mandatory_requirements %}
+            <div class="space-y-1.5">
+              <span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Requisitos Mandatórios:</span>
+              <div class="space-y-1.5">
+                {% for req in resume.match_analysis.mandatory_requirements %}
+                <div class="p-2.5 rounded-xl text-xs flex items-start gap-2.5 {% if req.status == 'matched' %}bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800{% else %}bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800{% endif %}">
+                  <span class="shrink-0 mt-0.5">{% if req.status == 'matched' %}✓{% else %}⚠️{% endif %}</span>
+                  <div>
+                    <span class="font-medium">{{ req.requirement }}</span>
+                    {% if req.evidence %}
+                    <div class="text-[10px] opacity-80 mt-0.5">Evidência: {{ req.evidence }}</div>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endfor %}
               </div>
             </div>
+            {% endif %}
 
-            <div>
-              <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Período</label>
-              <input 
-                type="text" 
-                name="exp_{{ exp_idx }}_period" 
-                value="{{ exp.start_date }}{% if exp.end_date %} — {{ exp.end_date }}{% endif %}" 
-                class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono text-slate-900 dark:text-slate-100">
+            {% if resume.match_analysis.desirable_requirements %}
+            <div class="space-y-1.5 pt-2">
+              <span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Requisitos Desejáveis:</span>
+              <div class="space-y-1.5">
+                {% for req in resume.match_analysis.desirable_requirements %}
+                <div class="p-2.5 rounded-xl text-xs flex items-start gap-2 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  <span class="shrink-0">ℹ️</span>
+                  <span>{{ req.requirement }}</span>
+                </div>
+                {% endfor %}
+              </div>
             </div>
+            {% endif %}
 
-            <div>
-              <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Bullet Points (um por linha)</label>
-              <textarea 
-                name="exp_{{ exp_idx }}_bullets" 
-                rows="4" 
-                class="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono leading-normal">{% for b in (exp.bullet_points or exp.achievements) %}{{ b }}
-{% endfor %}</textarea>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- PAINEL 2: EDITOR UNIFICADO DO CURRÍCULO (Inicia oculto)               -->
+      <!-- ===================================================================== -->
+      <div id="panel-editor" class="hidden space-y-4" role="tabpanel">
+        
+        <!-- FORMULÁRIO DO CURRÍCULO ESTRUTURADO -->
+        <form 
+          id="resume-editor-form"
+          hx-post="/resumes/{{ resume.id }}/preview-render"
+          hx-trigger="input delay:350ms, change"
+          hx-target="#resume-paper-container"
+          hx-indicator="#preview-spinner"
+          class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs space-y-5">
+          
+          <input type="hidden" name="form_submitted" value="1">
+          <input type="hidden" name="language" id="resume-language-hidden" value="{{ resume.language or 'pt-BR' }}">
+
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <h2 class="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span>✏️</span> Editor de Campos do Currículo
+            </h2>
+            <span class="text-[11px] text-slate-400">Edição e pré-visualização ao vivo</span>
+          </div>
+
+          <!-- SELEÇÃO DE IDIOMA NO EDITOR (Sincronizado) -->
+          <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5">
+              <span class="text-lg">🌐</span>
+              <div>
+                <label for="editor-resume-language" class="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+                  Idioma do Currículo
+                </label>
+                <span class="text-[10px] text-slate-500">Define o vocabulário e a tradução ATS</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <select 
+                id="editor-resume-language" 
+                onchange="syncLanguage(this.value)"
+                class="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                <option value="pt-BR" {% if (resume.language or 'pt-BR') == 'pt-BR' %}selected{% endif %}>🇧🇷 Português (Brasil)</option>
+                <option value="en-US" {% if resume.language == 'en-US' %}selected{% endif %}>🇺🇸 English (US)</option>
+                <option value="es-ES" {% if resume.language == 'es-ES' %}selected{% endif %}>🇪🇸 Español</option>
+                <option value="pt-PT" {% if resume.language == 'pt-PT' %}selected{% endif %}>🇵🇹 Português (Portugal)</option>
+                <option value="en-GB" {% if resume.language == 'en-GB' %}selected{% endif %}>🇬🇧 English (UK)</option>
+              </select>
+              <button 
+                type="button" 
+                id="btn-translate-lang"
+                onclick="executeResumeTranslation()" 
+                class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Traduzir todo o conteúdo deste currículo para o idioma selecionado">
+                <span id="btn-translate-icon">🌐</span>
+                <span id="btn-translate-text">Traduzir</span>
+              </button>
             </div>
           </div>
-          {% endfor %}
-        </div>
+          <div id="editor-language-feedback"></div>
 
-        <!-- 4. COMPETÊNCIAS TÉCNICAS -->
-        <div class="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <label for="input-skills" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Competências Técnicas em Destaque (separadas por vírgula)
-          </label>
-          <input 
-            type="text" 
-            id="input-skills"
-            name="skills_list" 
-            value="{% for s in (content.skills_highlighted or content.skills) %}{{ s.name if s.name is defined else s }}{% if not loop.last %}, {% endif %}{% endfor %}" 
-            class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-slate-100">
-        </div>
-      </form>
+          <!-- 1. TÍTULO PRETENDIDO -->
+          <div class="space-y-1">
+            <label for="input-target-title" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Título Profissional Alvo
+            </label>
+            <input 
+              type="text" 
+              id="input-target-title"
+              name="target_title" 
+              value="{{ content.header.target_title or '' }}" 
+              class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+          </div>
+
+          <!-- 2. RESUMO PROFISSIONAL -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <label for="input-summary" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Resumo Profissional Narrativo
+              </label>
+              <button 
+                type="button" 
+                onclick="switchStudioTab('copilot'); setPreviewCopilotMessage('Ajude-me a melhorar meu resumo profissional usando a metodologia ' + '{{ prompt_skill_slug }}');" 
+                class="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer">
+                🤖 Otimizar com IA
+              </button>
+            </div>
+            <textarea 
+              id="input-summary"
+              name="professional_summary" 
+              rows="4"
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden leading-relaxed">{{ content.professional_summary or '' }}</textarea>
+            <span class="text-[10px] text-slate-400">Foque em realizações quantificáveis e palavras-chave da oportunidade.</span>
+          </div>
+
+          <!-- 3. EXPERIÊNCIAS NO CURRÍCULO (EDIÇÃO DIRETA COM IMPORTAÇÃO DO DOSSIÊ INTEGRADA) -->
+          <div class="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div class="flex items-center justify-between pb-0.5">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                  Experiências Profissionais
+                </span>
+                <span id="exp-count-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono">
+                  {{ (content.selected_experiences or content.experiences)|length }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                {% if full_dossier.experiences %}
+                <button 
+                  type="button" 
+                  onclick="toggleDossierPicker('exp')"
+                  id="btn-toggle-dossier-exp"
+                  class="px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Puxar experiências do seu histórico cadastrado">
+                  <span>📂 Puxar do Dossiê</span>
+                  <span class="text-[10px] opacity-75 font-mono">({{ full_dossier.experiences|length }})</span>
+                </button>
+                {% endif %}
+                <button 
+                  type="button" 
+                  onclick="addManualExperience()"
+                  class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer">
+                  <span>➕ Nova Manual</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Gaveta Integrada do Dossiê Mestre para Experiências -->
+            <div id="dossier-picker-exp" class="hidden p-3.5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-900/60 space-y-2.5 animate-in fade-in">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5 text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                  <span>📂</span>
+                  <span>Histórico do Dossiê Mestre</span>
+                </div>
+                <button type="button" onclick="toggleDossierPicker('exp')" class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold p-1 cursor-pointer" title="Fechar">&times; Fechar</button>
+              </div>
+              <p class="text-[11px] text-indigo-900/80 dark:text-indigo-300/80">
+                Selecione quais experiências do seu perfil devem ser incluídas neste currículo:
+              </p>
+              <div class="space-y-2 max-h-64 overflow-y-auto pr-1 scrollbar-thin">
+                {% for m_exp in full_dossier.experiences %}
+                {% set m_idx = loop.index0 %}
+                {% set exp_match = namespace(is_included=false) %}
+                {% for cur_exp in (content.selected_experiences or content.experiences or []) %}
+                  {% if (cur_exp.company_name or cur_exp.company or '')|lower|trim == (m_exp.company_name or '')|lower|trim and (cur_exp.position_title or cur_exp.title or '')|lower|trim == (m_exp.position_title or '')|lower|trim %}
+                    {% set exp_match.is_included = true %}
+                  {% endif %}
+                {% endfor %}
+                <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between gap-2 shadow-2xs">
+                  <div class="min-w-0">
+                    <div class="font-bold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-1.5 truncate">
+                      <span>{{ m_exp.position_title }}</span>
+                      <span id="badge-included-exp-{{ m_idx }}" class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-semibold font-mono {% if not exp_match.is_included %}hidden{% endif %}">
+                        ✓ No CV
+                      </span>
+                    </div>
+                    <div class="text-[11px] text-slate-500 truncate">
+                      {{ m_exp.company_name }} • {{ m_exp.start_date }}{% if m_exp.end_date %} — {{ m_exp.end_date }}{% else %} — Atual{% endif %}
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button 
+                      type="button"
+                      id="btn-edit-dossier-exp-{{ m_idx }}"
+                      onclick="toggleEditDossierExp({{ m_idx }})"
+                      class="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                      title="Editar antes de inserir">
+                      ✏️
+                    </button>
+                    <button 
+                      type="button"
+                      id="btn-add-exp-{{ m_idx }}"
+                      data-dossier-idx="{{ m_idx }}"
+                      data-company="{{ m_exp.company_name | lower | trim }}"
+                      data-title="{{ m_exp.position_title | lower | trim }}"
+                      data-included="{{ 'true' if exp_match.is_included else 'false' }}"
+                      onclick='toggleDossierExperience({{ m_idx }}, {{ m_exp.position_title | tojson }}, {{ m_exp.company_name | tojson }}, "{{ m_exp.start_date }}{% if m_exp.end_date %} — {{ m_exp.end_date }}{% endif %}", {{ (m_exp.bullet_points or []) | tojson }})'
+                      class="px-2.5 py-1 rounded-lg {% if exp_match.is_included %}bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900 hover:bg-rose-100 dark:hover:bg-rose-900/60{% else %}bg-indigo-600 text-white hover:bg-indigo-700 shadow-2xs{% endif %} font-semibold text-[11px] transition-colors cursor-pointer">
+                      {% if exp_match.is_included %}🗑️ Remover{% else %}➕ Incluir{% endif %}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Mini Editor Inline Expansível da Experiência do Dossiê -->
+                <div id="dossier-exp-editor-{{ m_idx }}" class="hidden p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">
+                  <div class="grid grid-cols-2 gap-2">
+                    <div>
+                      <label class="text-[10px] text-slate-500">Cargo</label>
+                      <input type="text" id="dossier-exp-{{ m_idx }}-title" value="{{ m_exp.position_title }}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                    </div>
+                    <div>
+                      <label class="text-[10px] text-slate-500">Empresa</label>
+                      <input type="text" id="dossier-exp-{{ m_idx }}-company" value="{{ m_exp.company_name }}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                    </div>
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-500">Período</label>
+                    <input type="text" id="dossier-exp-{{ m_idx }}-period" value="{{ m_exp.start_date }}{% if m_exp.end_date %} — {{ m_exp.end_date }}{% endif %}" class="w-full px-2 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-500">Bullets (um por linha)</label>
+                    <textarea id="dossier-exp-{{ m_idx }}-bullets" rows="3" class="w-full px-2 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">{% for b in (m_exp.bullet_points or []) %}{{ b }}
+{% endfor %}</textarea>
+                  </div>
+                  <div class="flex justify-end gap-2 pt-1">
+                    <button type="button" onclick="toggleEditDossierExp({{ m_idx }})" class="px-2 py-1 text-[11px] text-slate-500 hover:text-slate-700 cursor-pointer">Cancelar</button>
+                    <button type="button" onclick="addEditedDossierExp({{ m_idx }})" class="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold cursor-pointer">✓ Inserir no Currículo</button>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <!-- Lista de Experiências Ativas no Currículo -->
+            <div id="experiences-container" class="space-y-3">
+              {% for exp in (content.selected_experiences or content.experiences) %}
+              {% set exp_idx = loop.index0 %}
+              <div class="experience-card p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5" 
+                   data-index="{{ exp_idx }}"
+                   data-company="{{ (exp.company_name or exp.company or '') | lower | trim }}"
+                   data-title="{{ (exp.position_title or exp.title or '') | lower | trim }}">
+                <div class="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-700/50">
+                  <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Experiência #<span class="exp-number">{{ loop.index }}</span>
+                  </span>
+                  <button 
+                    type="button" 
+                    onclick="removeExperienceCard(this)" 
+                    class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+                    🗑️ Remover
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Cargo</label>
+                    <input 
+                      type="text" 
+                      name="exp_{{ exp_idx }}_title" 
+                      value="{{ exp.position_title }}" 
+                      class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+                  </div>
+                  <div>
+                    <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Empresa</label>
+                    <input 
+                      type="text" 
+                      name="exp_{{ exp_idx }}_company" 
+                      value="{{ exp.company_name }}" 
+                      class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+                  </div>
+                </div>
+
+                <div>
+                  <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Período</label>
+                  <input 
+                    type="text" 
+                    name="exp_{{ exp_idx }}_period" 
+                    value="{{ exp.start_date }}{% if exp.end_date %} — {{ exp.end_date }}{% endif %}" 
+                    class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono text-slate-900 dark:text-slate-100">
+                </div>
+
+                <div>
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Bullet Points (um por linha)</label>
+                    <button 
+                      type="button" 
+                      onclick="switchStudioTab('copilot'); setPreviewCopilotMessage('Ajude-me a otimizar as métricas da minha experiência na empresa ' + '{{ exp.company_name }}');" 
+                      class="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer">
+                      🤖 Otimizar Bullets
+                    </button>
+                  </div>
+                  <textarea 
+                    name="exp_{{ exp_idx }}_bullets" 
+                    rows="4" 
+                    class="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono leading-normal">{% for b in (exp.bullet_points or []) %}{{ b }}
+{% endfor %}</textarea>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- 4. FORMAÇÃO ACADÊMICA -->
+          <div class="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div class="flex items-center justify-between pb-0.5">
+              <span class="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                Formação Acadêmica
+              </span>
+              <div class="flex items-center gap-1.5">
+                {% if full_dossier.educations %}
+                <button 
+                  type="button" 
+                  onclick="toggleDossierPicker('edu')"
+                  class="px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Puxar formações do seu histórico cadastrado">
+                  <span>📂 Puxar do Dossiê</span>
+                  <span class="text-[10px] opacity-75 font-mono">({{ full_dossier.educations|length }})</span>
+                </button>
+                {% endif %}
+                <button 
+                  type="button" 
+                  onclick="addManualEducation()"
+                  class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer">
+                  <span>➕ Nova Manual</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Gaveta Integrada do Dossiê Mestre para Formações -->
+            <div id="dossier-picker-edu" class="hidden p-3.5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-900/60 space-y-2 animate-in fade-in">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-indigo-950 dark:text-indigo-200">Formações Cadastradas no Dossiê:</span>
+                <button type="button" onclick="toggleDossierPicker('edu')" class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold p-1 cursor-pointer">&times; Fechar</button>
+              </div>
+              <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                {% for m_edu in full_dossier.educations %}
+                {% set e_idx = loop.index0 %}
+                <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between gap-2 shadow-2xs">
+                  <div class="min-w-0">
+                    <div class="font-bold text-xs text-slate-900 dark:text-slate-100 truncate">{{ m_edu.degree }} em {{ m_edu.field_of_study }}</div>
+                    <div class="text-[11px] text-slate-500 truncate">{{ m_edu.institution_name }} • {{ m_edu.start_date }}{% if m_edu.end_date %} — {{ m_edu.end_date }}{% endif %}</div>
+                  </div>
+                  <button 
+                    type="button" 
+                    id="btn-add-edu-{{ e_idx }}"
+                    onclick='addDossierEducation({{ e_idx }}, {{ m_edu.degree | tojson }}, {{ m_edu.institution_name | tojson }}, {{ m_edu.field_of_study | tojson }}, "{{ m_edu.start_date }}{% if m_edu.end_date %} — {{ m_edu.end_date }}{% endif %}")'
+                    class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-semibold text-[11px] transition-colors cursor-pointer shrink-0">
+                    ➕ Incluir
+                  </button>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <!-- Lista de Formações Ativas no Currículo -->
+            <div id="educations-container" class="space-y-3">
+              {% for edu in (content.education or []) %}
+              {% set edu_idx = loop.index0 %}
+              <div class="education-card p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2" data-index="{{ edu_idx }}">
+                <div class="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-700/50">
+                  <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Formação #<span class="edu-number">{{ loop.index }}</span>
+                  </span>
+                  <button type="button" onclick="removeEducationCard(this)" class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+                    🗑️ Remover
+                  </button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] text-slate-500">Grau / Curso</label>
+                    <input type="text" name="edu_{{ edu_idx }}_degree" value="{{ edu.degree }}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-500">Instituição</label>
+                    <input type="text" name="edu_{{ edu_idx }}_institution" value="{{ edu.institution_name or edu.institution }}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] text-slate-500">Área de Estudo</label>
+                    <input type="text" name="edu_{{ edu_idx }}_field" value="{{ edu.field_of_study or '' }}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-500">Período</label>
+                    <input type="text" name="edu_{{ edu_idx }}_period" value="{{ edu.start_date }}{% if edu.end_date %} — {{ edu.end_date }}{% endif %}" class="w-full px-2 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- 5. CERTIFICAÇÕES NO CURRÍCULO -->
+          <div class="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div class="flex items-center justify-between pb-0.5">
+              <span class="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                Certificações
+              </span>
+              <div class="flex items-center gap-1.5">
+                {% if full_dossier.certifications %}
+                <button 
+                  type="button" 
+                  onclick="toggleDossierPicker('cert')"
+                  class="px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Puxar certificações do seu histórico cadastrado">
+                  <span>📂 Puxar do Dossiê</span>
+                  <span class="text-[10px] opacity-75 font-mono">({{ full_dossier.certifications|length }})</span>
+                </button>
+                {% endif %}
+                <button 
+                  type="button" 
+                  onclick="addManualCertification()"
+                  class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer">
+                  <span>➕ Nova Manual</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Gaveta Integrada do Dossiê Mestre para Certificações -->
+            <div id="dossier-picker-cert" class="hidden p-3.5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-900/60 space-y-2 animate-in fade-in">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-indigo-950 dark:text-indigo-200">Certificações Cadastradas no Dossiê:</span>
+                <button type="button" onclick="toggleDossierPicker('cert')" class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold p-1 cursor-pointer">&times; Fechar</button>
+              </div>
+              <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                {% for m_cert in full_dossier.certifications %}
+                {% set c_idx = loop.index0 %}
+                <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between gap-2 shadow-2xs">
+                  <div class="min-w-0">
+                    <div class="font-bold text-xs text-slate-900 dark:text-slate-100 truncate">{{ m_cert.name }}</div>
+                    <div class="text-[11px] text-slate-500 truncate">{{ m_cert.issuing_organization or 'Emissor' }}</div>
+                  </div>
+                  <button 
+                    type="button" 
+                    id="btn-add-cert-{{ c_idx }}"
+                    onclick='addDossierCertification({{ c_idx }}, {{ m_cert.name | tojson }}, {{ (m_cert.issuing_organization or "") | tojson }})'
+                    class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-semibold text-[11px] transition-colors cursor-pointer shrink-0">
+                    ➕ Incluir
+                  </button>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <!-- Lista de Certificações Ativas no Currículo -->
+            <div id="certifications-container" class="space-y-2">
+              {% for cert in (content.certifications or []) %}
+              {% set cert_idx = loop.index0 %}
+              <div class="certification-card p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-1.5" data-index="{{ cert_idx }}">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Certificação #<span class="cert-number">{{ loop.index }}</span>
+                  </span>
+                  <button type="button" onclick="removeCertificationCard(this)" class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+                    🗑️ Remover
+                  </button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] text-slate-500">Nome</label>
+                    <input type="text" name="cert_{{ cert_idx }}_name" value="{{ cert.name if cert.name is defined else cert }}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-500">Emissor</label>
+                    <input type="text" name="cert_{{ cert_idx }}_issuer" value="{{ cert.issuing_organization or cert.issuer or '' }}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- 6. COMPETÊNCIAS TÉCNICAS (COM CHIPS DO DOSSIÊ PARA 1-CLIQUE) -->
+          <div class="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <label for="input-skills" class="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+              Competências Técnicas em Destaque (separadas por vírgula)
+            </label>
+            <input 
+              type="text" 
+              id="input-skills"
+              name="skills_list" 
+              value="{% for s in (content.skills_highlighted or content.skills) %}{{ s.name if s.name is defined else s }}{% if not loop.last %}, {% endif %}{% endfor %}" 
+              class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-slate-100">
+            
+            {% if full_dossier.skills %}
+            <div class="pt-1 space-y-1">
+              <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                Do seu Dossiê Mestre (clique para incluir no campo):
+              </span>
+              <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1 scrollbar-thin">
+                {% for sk in full_dossier.skills %}
+                <button 
+                  type="button" 
+                  onclick="addSkillToResume('{{ sk.name }}')"
+                  class="px-2 py-0.5 rounded-lg text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer">
+                  + {{ sk.name }}
+                </button>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Rodapé de Ações do Formulário -->
+          <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
+            <button 
+              type="button"
+              onclick="triggerStudioSave()"
+              class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5">
+              <span>💾 Salvar Alterações</span>
+            </button>
+          </div>
+
+        </form>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- PAINEL 3: COPILOT IA ASSISTENTE                                       -->
+      <!-- ===================================================================== -->
+      <div id="panel-copilot" class="hidden space-y-4" role="tabpanel">
+        {% include "resumes/partials/preview_copilot_chat.html.jinja2" %}
+      </div>
+
     </div>
 
-    <!-- COLUNA DA DIREITA: Folha A4 com Visualização ao Vivo (7 colunas) -->
-    <div class="lg:col-span-7 space-y-3 sticky top-20">
-      <div class="flex items-center justify-between px-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
-        <span class="flex items-center gap-1.5">
-          <span>📄</span> Visualização ATS Real (Diagramação Dinâmica)
-        </span>
-        <span id="preview-spinner" class="htmx-indicator text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-          <span class="animate-spin text-sm">⟳</span> Atualizando preview...
-        </span>
+    <!-- ======================================================================= -->
+    <!-- COLUNA DA DIREITA (7 Colunas): Folha A4 com Mesa de Trabalho e Zoom     -->
+    <!-- ======================================================================= -->
+    <div class="lg:col-span-7 space-y-3 lg:max-h-[calc(100vh-8.5rem)] lg:overflow-y-auto rounded-2xl bg-slate-100/90 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/80 p-3 sm:p-5 shadow-inner flex flex-col items-center scrollbar-thin">
+      
+      <!-- Barra Superior da Mesa de Trabalho (Título do Preview + Controles de Zoom) -->
+      <div class="w-full flex items-center justify-between px-2 text-xs text-slate-500 dark:text-slate-400 font-medium shrink-0">
+        <div class="flex items-center gap-2">
+          <span>📄</span>
+          <span class="font-semibold text-slate-700 dark:text-slate-300">Visualização ATS Real</span>
+          <span class="hidden sm:inline text-slate-400">(Diagramação Dinâmica)</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Spinner HTMX de Atualização -->
+          <span id="preview-spinner" class="htmx-indicator text-indigo-600 dark:text-indigo-400 flex items-center gap-1 text-[11px] font-medium mr-1">
+            <span class="animate-spin text-sm">⟳</span> Atualizando preview...
+          </span>
+
+          <!-- Controles de Zoom da Folha A4 -->
+          <div class="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-1.5 py-0.5 shadow-xs text-xs">
+            <button 
+              type="button" 
+              onclick="zoomPreview(-0.1)" 
+              class="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold cursor-pointer" 
+              title="Reduzir Zoom (-)">
+              -
+            </button>
+            <span id="zoom-level-label" class="font-mono text-[11px] font-semibold px-1 text-slate-800 dark:text-slate-200">
+              100%
+            </span>
+            <button 
+              type="button" 
+              onclick="zoomPreview(0.1)" 
+              class="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold cursor-pointer" 
+              title="Aumentar Zoom (+)">
+              +
+            </button>
+            <button 
+              type="button" 
+              onclick="resetZoom()" 
+              class="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 text-[10px] cursor-pointer" 
+              title="Redefinir Zoom para 100%">
+              ⟲
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Container Dinâmico da Folha A4 -->
-      <div id="resume-paper-container">
-        {% include "resumes/partials/preview_paper.html.jinja2" %}
+      <!-- Container Dinâmico da Folha A4 com Suporte a Zoom -->
+      <div id="resume-zoom-wrapper" class="w-full flex justify-center py-2">
+        <div id="resume-paper-container" class="shadow-2xl rounded-sm">
+          {% include "resumes/partials/preview_paper.html.jinja2" %}
+        </div>
       </div>
+
     </div>
 
   </div>
 </div>
 
 <script>
+  let nextExpIndex = {{ (content.selected_experiences or content.experiences)|length }};
+  let nextEduIndex = {{ (content.education or [])|length }};
+  let nextCertIndex = {{ (content.certifications or [])|length }};
+  let currentZoom = 1.0;
+
+  // Zoom da Folha A4 no Canvas
+  function zoomPreview(delta) {
+    currentZoom = Math.min(Math.max(0.5, currentZoom + delta), 1.5);
+    applyZoom();
+  }
+
+  function resetZoom() {
+    currentZoom = 1.0;
+    applyZoom();
+  }
+
+  function applyZoom() {
+    var wrapper = document.getElementById('resume-zoom-wrapper');
+    var label = document.getElementById('zoom-level-label');
+    if (wrapper) {
+      wrapper.style.transform = `scale(${currentZoom})`;
+    }
+    if (label) {
+      label.innerText = Math.round(currentZoom * 100) + '%';
+    }
+  }
+
+  // Alterna gavetas retráteis de importação do Dossiê Mestre no Editor
+  function toggleDossierPicker(cat) {
+    var picker = document.getElementById('dossier-picker-' + cat);
+    if (!picker) return;
+    picker.classList.toggle('hidden');
+  }
+
+  // Alterna o Menu Dropdown "Mais Opções" (⋯)
+  function toggleStudioMoreMenu() {
+    var menu = document.getElementById('studio-more-menu');
+    var btn = document.getElementById('btn-studio-more');
+    if (!menu) return;
+    var isHidden = menu.classList.contains('hidden');
+    if (isHidden) {
+      menu.classList.remove('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+    } else {
+      menu.classList.add('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  // Fecha dropdown ao clicar fora ou pressionar ESC
+  document.addEventListener('click', function(e) {
+    var container = document.getElementById('studio-more-dropdown-container');
+    var menu = document.getElementById('studio-more-menu');
+    if (container && menu && !container.contains(e.target) && !menu.classList.contains('hidden')) {
+      menu.classList.add('hidden');
+      var btn = document.getElementById('btn-studio-more');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      var menu = document.getElementById('studio-more-menu');
+      if (menu && !menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        var btn = document.getElementById('btn-studio-more');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
+    }
+  });
+
+  // Salvar com indicador de status
+  function triggerStudioSave() {
+    var indicator = document.getElementById('top-save-indicator');
+    var text = document.getElementById('top-save-text');
+    if (indicator && text) {
+      indicator.className = 'inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800';
+      text.innerText = 'Salvando...';
+    }
+    document.body.dispatchEvent(new Event('saveResume'));
+  }
+
+  // Alterna as abas principais do Studio (job, editor, copilot)
+  function switchStudioTab(tab) {
+    // Normaliza 'dossier' para 'editor' abrindo a gaveta de experiências
+    if (tab === 'dossier') {
+      tab = 'editor';
+      var picker = document.getElementById('dossier-picker-exp');
+      if (picker) picker.classList.remove('hidden');
+    }
+
+    var pJob = document.getElementById('panel-job');
+    var pEditor = document.getElementById('panel-editor');
+    var pCopilot = document.getElementById('panel-copilot');
+
+    var bJob = document.getElementById('tab-btn-job');
+    var bEditor = document.getElementById('tab-btn-editor');
+    var bCopilot = document.getElementById('tab-btn-copilot');
+
+    var activeClasses = ['bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-white', 'shadow-xs'];
+    var inactiveClasses = ['text-slate-600', 'dark:text-slate-400'];
+
+    var panels = [pJob, pEditor, pCopilot];
+    var buttons = [bJob, bEditor, bCopilot];
+
+    buttons.forEach(function(b) {
+      if (!b) return;
+      activeClasses.forEach(function(c) { b.classList.remove(c); });
+      inactiveClasses.forEach(function(c) { b.classList.add(c); });
+      b.setAttribute('aria-selected', 'false');
+    });
+
+    panels.forEach(function(p) {
+      if (p) p.classList.add('hidden');
+    });
+
+    var targetPanel = null;
+    var targetBtn = null;
+
+    if (tab === 'job') {
+      targetPanel = pJob;
+      targetBtn = bJob;
+    } else if (tab === 'editor') {
+      targetPanel = pEditor;
+      targetBtn = bEditor;
+    } else if (tab === 'copilot') {
+      targetPanel = pCopilot;
+      targetBtn = bCopilot;
+      var box = document.getElementById('preview-copilot-messages');
+      if (box) { box.scrollTop = box.scrollHeight; }
+      var input = document.getElementById('preview-copilot-input');
+      if (input) { input.focus(); }
+    }
+
+    if (targetPanel) targetPanel.classList.remove('hidden');
+    if (targetBtn) {
+      activeClasses.forEach(function(c) { targetBtn.classList.add(c); });
+      inactiveClasses.forEach(function(c) { targetBtn.classList.remove(c); });
+      targetBtn.setAttribute('aria-selected', 'true');
+    }
+  }
+
+  // Atualiza rapidamente o modelo e nível de raciocínio (thinking) da IA
+  async function updateQuickModel(val) {
+    var spinner = document.getElementById('top-model-spinner');
+    var badge = document.getElementById('top-model-status');
+
+    if (spinner) spinner.classList.remove('hidden');
+    if (badge) badge.classList.add('hidden');
+
+    try {
+      var formData = new FormData();
+      formData.append('model_choice', val);
+
+      var response = await fetch('/settings/quick-model', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        if (badge) {
+          badge.innerText = '✓ Salvo';
+          badge.classList.remove('hidden', 'text-rose-600', 'dark:text-rose-400');
+          badge.classList.add('text-emerald-600', 'dark:text-emerald-400');
+          setTimeout(function() {
+            badge.classList.add('hidden');
+          }, 2500);
+        }
+      } else {
+        if (badge) {
+          badge.innerText = '⚠️ Erro';
+          badge.classList.remove('hidden', 'text-emerald-600', 'dark:text-emerald-400');
+          badge.classList.add('text-rose-600', 'dark:text-rose-400');
+          setTimeout(function() {
+            badge.classList.add('hidden');
+          }, 3000);
+        }
+      }
+    } catch (err) {
+      if (badge) {
+        badge.innerText = '⚠️ Falha';
+        badge.classList.remove('hidden', 'text-emerald-600', 'dark:text-emerald-400');
+        badge.classList.add('text-rose-600', 'dark:text-rose-400');
+        setTimeout(function() {
+          badge.classList.add('hidden');
+        }, 3000);
+      }
+    } finally {
+      if (spinner) spinner.classList.add('hidden');
+    }
+  }
+
+  // Sincroniza idioma entre a barra superior e o formulário
+  function syncLanguage(val) {
+    var topSelect = document.getElementById('top-resume-language');
+    var editorSelect = document.getElementById('editor-resume-language');
+    var hiddenInput = document.getElementById('resume-language-hidden');
+    if (topSelect) topSelect.value = val;
+    if (editorSelect) editorSelect.value = val;
+    if (hiddenInput) hiddenInput.value = val;
+
+    var form = document.getElementById('resume-editor-form');
+    if (form) {
+      htmx.trigger(form, 'input');
+    }
+  }
+
+  // Executa tradução direta do currículo mantendo o usuário na tela do editor
+  async function executeResumeTranslation() {
+    var langSelect = document.getElementById('editor-resume-language') || document.getElementById('top-resume-language');
+    var targetLang = langSelect ? langSelect.value : 'pt-BR';
+    var btn = document.getElementById('btn-translate-lang') || document.getElementById('top-btn-translate');
+    var feedback = document.getElementById('editor-language-feedback');
+
+    if (feedback) feedback.innerHTML = '';
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('opacity-75', 'cursor-not-allowed');
+      btn.innerHTML = '<span class="animate-spin">⟳</span> <span>Traduzindo com IA...</span>';
+    }
+
+    try {
+      var formData = new FormData();
+      formData.append('language', targetLang);
+
+      var response = await fetch('/resumes/{{ resume.id }}/translate', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+      });
+
+      var data = await response.json();
+      if (response.ok && data.status === 'ok') {
+        window.location.href = data.redirect_url;
+      } else {
+        var errorMsg = data.message || 'Falha ao traduzir o currículo.';
+        if (feedback) {
+          feedback.innerHTML = `
+            <div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 font-medium flex items-center justify-between animate-in fade-in">
+              <div class="flex items-center gap-2">
+                <span>⚠️</span>
+                <span>${errorMsg}</span>
+              </div>
+              <button type="button" onclick="this.parentElement.remove()" class="text-rose-500 hover:text-rose-700 ml-2 font-bold cursor-pointer" title="Fechar aviso">&times;</button>
+            </div>
+          `;
+          feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    } catch (err) {
+      if (feedback) {
+        feedback.innerHTML = `
+          <div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 font-medium flex items-center justify-between animate-in fade-in">
+            <div class="flex items-center gap-2">
+              <span>⚠️</span>
+              <span>Erro de conexão ao traduzir o currículo. Verifique sua rede e tente novamente.</span>
+            </div>
+            <button type="button" onclick="this.parentElement.remove()" class="text-rose-500 hover:text-rose-700 ml-2 font-bold cursor-pointer" title="Fechar aviso">&times;</button>
+          </div>
+        `;
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        btn.innerHTML = '<span id="btn-translate-icon">🌐</span> <span id="btn-translate-text">Traduzir</span>';
+      }
+    }
+  }
+
+  // Abre/fecha editor inline de experiência do dossiê
+  function toggleEditDossierExp(idx) {
+    var ed = document.getElementById('dossier-exp-editor-' + idx);
+    if (!ed) return;
+    ed.classList.toggle('hidden');
+  }
+
+  // Inserção da experiência do dossiê pós-edição inline
+  function addEditedDossierExp(idx) {
+    var title = document.getElementById('dossier-exp-' + idx + '-title').value;
+    var company = document.getElementById('dossier-exp-' + idx + '-company').value;
+    var period = document.getElementById('dossier-exp-' + idx + '-period').value;
+    var bulletsRaw = document.getElementById('dossier-exp-' + idx + '-bullets').value;
+    var bullets = bulletsRaw.split('\n').filter(function(b) { return b.trim(); });
+
+    addDossierExperience(idx, title, company, period, bullets);
+    toggleEditDossierExp(idx);
+  }
+
+  // Alterna inclusão/remoção de experiência do Dossiê Mestre no currículo
+  function toggleDossierExperience(idx, title, company, period, bullets) {
+    var btn = document.getElementById('btn-add-exp-' + idx);
+    var isIncluded = btn && btn.dataset.included === 'true';
+
+    if (isIncluded) {
+      removeDossierExperienceFromResume(idx, company, title);
+    } else {
+      addDossierExperience(idx, title, company, period, bullets);
+    }
+  }
+
+  function removeDossierExperienceFromResume(idx, company, title) {
+    var container = document.getElementById('experiences-container');
+    if (!container) return;
+
+    var normalizedCompany = (company || '').toLowerCase().trim();
+    var normalizedTitle = (title || '').toLowerCase().trim();
+
+    var cards = container.querySelectorAll('.experience-card');
+    for (var i = 0; i < cards.length; i++) {
+      var c = cards[i];
+      var cCompany = (c.dataset.company || c.querySelector('[name*="_company"]')?.value || '').toLowerCase().trim();
+      var cTitle = (c.dataset.title || c.querySelector('[name*="_title"]')?.value || '').toLowerCase().trim();
+      var cDossierIdx = c.dataset.dossierIdx;
+
+      if ((cDossierIdx !== undefined && cDossierIdx === String(idx)) || 
+          (cCompany === normalizedCompany && cTitle === normalizedTitle)) {
+        c.remove();
+        break;
+      }
+    }
+
+    var nums = document.querySelectorAll('.exp-number');
+    nums.forEach(function(el, i) { el.innerText = (i + 1); });
+
+    var countBadge = document.getElementById('exp-count-badge');
+    if (countBadge) {
+      countBadge.innerText = container.querySelectorAll('.experience-card').length;
+    }
+
+    var btn = document.getElementById('btn-add-exp-' + idx);
+    if (btn) {
+      btn.dataset.included = 'false';
+      btn.innerHTML = '➕ Incluir';
+      btn.title = 'Clique para incluir esta experiência no currículo.';
+      btn.className = 'px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-2xs font-semibold text-[11px] transition-colors cursor-pointer';
+    }
+
+    var badge = document.getElementById('badge-included-exp-' + idx);
+    if (badge) badge.classList.add('hidden');
+
+    var form = document.getElementById('resume-editor-form');
+    if (form) { htmx.trigger(form, 'input'); }
+  }
+
+  // Adiciona experiência ao formulário e folha A4
+  function addDossierExperience(idx, title, company, period, bullets) {
+    var container = document.getElementById('experiences-container');
+    if (!container) return;
+
+    var curIdx = nextExpIndex++;
+    var bulletsText = Array.isArray(bullets) ? bullets.join('\n') : (bullets || '');
+
+    var card = document.createElement('div');
+    card.className = 'experience-card p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5 animate-in fade-in';
+    card.dataset.index = curIdx;
+    card.dataset.dossierIdx = idx;
+    card.dataset.company = (company || '').toLowerCase().trim();
+    card.dataset.title = (title || '').toLowerCase().trim();
+
+    card.innerHTML = `
+      <div class="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-700/50">
+        <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+          Experiência #<span class="exp-number">${container.children.length + 1}</span> (Dossiê)
+        </span>
+        <button type="button" onclick="removeExperienceCard(this)" class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+          🗑️ Remover
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Cargo</label>
+          <input type="text" name="exp_${curIdx}_title" value="${title}" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+        </div>
+        <div>
+          <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Empresa</label>
+          <input type="text" name="exp_${curIdx}_company" value="${company}" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+        </div>
+      </div>
+      <div>
+        <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Período</label>
+        <input type="text" name="exp_${curIdx}_period" value="${period}" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono text-slate-900 dark:text-slate-100">
+      </div>
+      <div>
+        <div class="flex items-center justify-between">
+          <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Bullet Points (um por linha)</label>
+          <button type="button" onclick="switchStudioTab('copilot'); setPreviewCopilotMessage('Ajude-me a otimizar as métricas da minha experiência na empresa ' + '${company}');" class="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer">🤖 Otimizar Bullets</button>
+        </div>
+        <textarea name="exp_${curIdx}_bullets" rows="4" class="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono leading-normal">${bulletsText}</textarea>
+      </div>
+    `;
+
+    container.appendChild(card);
+
+    var countBadge = document.getElementById('exp-count-badge');
+    if (countBadge) {
+      countBadge.innerText = container.querySelectorAll('.experience-card').length;
+    }
+
+    var btn = document.getElementById('btn-add-exp-' + idx);
+    if (btn) {
+      btn.dataset.included = 'true';
+      btn.innerHTML = '🗑️ Remover';
+      btn.title = 'Esta experiência já está inclusa no currículo. Clique para remover.';
+      btn.className = 'px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900 hover:bg-rose-100 dark:hover:bg-rose-900/60 font-semibold text-[11px] transition-colors cursor-pointer';
+    }
+
+    var badge = document.getElementById('badge-included-exp-' + idx);
+    if (badge) badge.classList.remove('hidden');
+
+    var form = document.getElementById('resume-editor-form');
+    if (form) { htmx.trigger(form, 'input'); }
+  }
+
+  // Cria experiência manual em branco
+  function addManualExperience() {
+    var container = document.getElementById('experiences-container');
+    if (!container) return;
+
+    var curIdx = nextExpIndex++;
+    var card = document.createElement('div');
+    card.className = 'experience-card p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5 animate-in fade-in';
+    card.dataset.index = curIdx;
+    card.innerHTML = `
+      <div class="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-700/50">
+        <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+          Nova Experiência #<span class="exp-number">${container.children.length + 1}</span>
+        </span>
+        <button type="button" onclick="removeExperienceCard(this)" class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+          🗑️ Remover
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Cargo</label>
+          <input type="text" name="exp_${curIdx}_title" placeholder="Ex: Tech Lead" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+        </div>
+        <div>
+          <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Empresa</label>
+          <input type="text" name="exp_${curIdx}_company" placeholder="Ex: Tech Corp" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100">
+        </div>
+      </div>
+      <div>
+        <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Período</label>
+        <input type="text" name="exp_${curIdx}_period" placeholder="2022 — Atual" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono text-slate-900 dark:text-slate-100">
+      </div>
+      <div>
+        <label class="text-[10px] font-medium text-slate-500 dark:text-slate-400">Bullet Points (um por linha)</label>
+        <textarea name="exp_${curIdx}_bullets" rows="3" placeholder="Liderou time de 6 pessoas...&#10;Implementou microsserviços em FastAPI..." class="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 font-mono leading-normal"></textarea>
+      </div>
+    `;
+
+    container.appendChild(card);
+    var countBadge = document.getElementById('exp-count-badge');
+    if (countBadge) {
+      countBadge.innerText = container.querySelectorAll('.experience-card').length;
+    }
+    var firstInput = card.querySelector('input');
+    if (firstInput) firstInput.focus();
+  }
+
+  function removeExperienceCard(btn) {
+    var card = btn.closest('.experience-card');
+    if (!card) return;
+
+    var company = (card.dataset.company || card.querySelector('[name*="_company"]')?.value || '').toLowerCase().trim();
+    var title = (card.dataset.title || card.querySelector('[name*="_title"]')?.value || '').toLowerCase().trim();
+    var dossierIdx = card.dataset.dossierIdx;
+
+    card.remove();
+
+    var nums = document.querySelectorAll('.exp-number');
+    nums.forEach(function(el, i) { el.innerText = (i + 1); });
+
+    var countBadge = document.getElementById('exp-count-badge');
+    var container = document.getElementById('experiences-container');
+    if (countBadge && container) {
+      countBadge.innerText = container.querySelectorAll('.experience-card').length;
+    }
+
+    var dossierButtons = document.querySelectorAll('[id^="btn-add-exp-"]');
+    dossierButtons.forEach(function(dBtn) {
+      var dCompany = (dBtn.dataset.company || '').toLowerCase().trim();
+      var dTitle = (dBtn.dataset.title || '').toLowerCase().trim();
+      var dIdx = dBtn.dataset.dossierIdx;
+
+      if ((dossierIdx !== undefined && dIdx === dossierIdx) || (dCompany === company && dTitle === title)) {
+        dBtn.dataset.included = 'false';
+        dBtn.innerHTML = '➕ Incluir';
+        dBtn.title = 'Clique para incluir esta experiência no currículo.';
+        dBtn.className = 'px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-2xs font-semibold text-[11px] transition-colors cursor-pointer';
+        
+        var bIdx = dBtn.id.replace('btn-add-exp-', '');
+        var badge = document.getElementById('badge-included-exp-' + bIdx);
+        if (badge) badge.classList.add('hidden');
+      }
+    });
+
+    var form = document.getElementById('resume-editor-form');
+    if (form) { htmx.trigger(form, 'input'); }
+  }
+
+  // --- FORMAÇÃO ACADÊMICA ---
+  function addDossierEducation(idx, degree, institution, field, period) {
+    var container = document.getElementById('educations-container');
+    if (!container) return;
+
+    var curIdx = nextEduIndex++;
+    var card = document.createElement('div');
+    card.className = 'education-card p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2 animate-in fade-in';
+    card.dataset.index = curIdx;
+    card.innerHTML = `
+      <div class="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-700/50">
+        <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+          Formação #<span class="edu-number">${container.children.length + 1}</span> (Dossiê)
+        </span>
+        <button type="button" onclick="removeEducationCard(this)" class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+          🗑️ Remover
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[10px] text-slate-500">Grau / Curso</label>
+          <input type="text" name="edu_${curIdx}_degree" value="${degree}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500">Instituição</label>
+          <input type="text" name="edu_${curIdx}_institution" value="${institution}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[10px] text-slate-500">Área de Estudo</label>
+          <input type="text" name="edu_${curIdx}_field" value="${field || ''}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500">Período</label>
+          <input type="text" name="edu_${curIdx}_period" value="${period || ''}" class="w-full px-2 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+      </div>
+    `;
+
+    container.appendChild(card);
+    var btn = document.getElementById('btn-add-edu-' + idx);
+    if (btn) {
+      btn.innerText = '✓ Adicionado';
+      btn.className = 'px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-semibold text-[11px]';
+    }
+    var form = document.getElementById('resume-editor-form');
+    if (form) { htmx.trigger(form, 'input'); }
+  }
+
+  function addManualEducation() {
+    var container = document.getElementById('educations-container');
+    if (!container) return;
+
+    var curIdx = nextEduIndex++;
+    var card = document.createElement('div');
+    card.className = 'education-card p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-2 animate-in fade-in';
+    card.dataset.index = curIdx;
+    card.innerHTML = `
+      <div class="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-700/50">
+        <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+          Nova Formação #<span class="edu-number">${container.children.length + 1}</span>
+        </span>
+        <button type="button" onclick="removeEducationCard(this)" class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+          🗑️ Remover
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[10px] text-slate-500">Grau / Curso</label>
+          <input type="text" name="edu_${curIdx}_degree" placeholder="Bacharelado em Ciência da Computação" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500">Instituição</label>
+          <input type="text" name="edu_${curIdx}_institution" placeholder="Universidade de São Paulo" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[10px] text-slate-500">Área de Estudo</label>
+          <input type="text" name="edu_${curIdx}_field" placeholder="Engenharia de Software" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500">Período</label>
+          <input type="text" name="edu_${curIdx}_period" placeholder="2018 — 2022" class="w-full px-2 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+      </div>
+    `;
+
+    container.appendChild(card);
+    var first = card.querySelector('input');
+    if (first) first.focus();
+  }
+
+  function removeEducationCard(btn) {
+    var card = btn.closest('.education-card');
+    if (!card) return;
+    card.remove();
+    var nums = document.querySelectorAll('.edu-number');
+    nums.forEach(function(el, i) { el.innerText = (i + 1); });
+    var form = document.getElementById('resume-editor-form');
+    if (form) { htmx.trigger(form, 'input'); }
+  }
+
+  // --- CERTIFICAÇÕES ---
+  function addDossierCertification(idx, name, issuer) {
+    var container = document.getElementById('certifications-container');
+    if (!container) return;
+
+    var curIdx = nextCertIndex++;
+    var card = document.createElement('div');
+    card.className = 'certification-card p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-1.5 animate-in fade-in';
+    card.dataset.index = curIdx;
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+          Certificação #<span class="cert-number">${container.children.length + 1}</span> (Dossiê)
+        </span>
+        <button type="button" onclick="removeCertificationCard(this)" class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+          🗑️ Remover
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[10px] text-slate-500">Nome</label>
+          <input type="text" name="cert_${curIdx}_name" value="${name}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500">Emissor</label>
+          <input type="text" name="cert_${curIdx}_issuer" value="${issuer || ''}" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+      </div>
+    `;
+
+    container.appendChild(card);
+    var btn = document.getElementById('btn-add-cert-' + idx);
+    if (btn) {
+      btn.innerText = '✓ Adicionado';
+      btn.className = 'px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-semibold text-[11px]';
+    }
+    var form = document.getElementById('resume-editor-form');
+    if (form) { htmx.trigger(form, 'input'); }
+  }
+
+  function addManualCertification() {
+    var container = document.getElementById('certifications-container');
+    if (!container) return;
+
+    var curIdx = nextCertIndex++;
+    var card = document.createElement('div');
+    card.className = 'certification-card p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-1.5 animate-in fade-in';
+    card.dataset.index = curIdx;
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+          Nova Certificação #<span class="cert-number">${container.children.length + 1}</span>
+        </span>
+        <button type="button" onclick="removeCertificationCard(this)" class="text-[10px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer">
+          🗑️ Remover
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[10px] text-slate-500">Nome</label>
+          <input type="text" name="cert_${curIdx}_name" placeholder="Ex: AWS Certified Solutions Architect" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500">Emissor</label>
+          <input type="text" name="cert_${curIdx}_issuer" placeholder="Ex: Amazon Web Services" class="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        </div>
+      </div>
+    `;
+
+    container.appendChild(card);
+    var first = card.querySelector('input');
+    if (first) first.focus();
+  }
+
+  function removeCertificationCard(btn) {
+    var card = btn.closest('.certification-card');
+    if (!card) return;
+    card.remove();
+    var nums = document.querySelectorAll('.cert-number');
+    nums.forEach(function(el, i) { el.innerText = (i + 1); });
+    var form = document.getElementById('resume-editor-form');
+    if (form) { htmx.trigger(form, 'input'); }
+  }
+
+  // Adiciona competência à lista
+  function addSkillToResume(skillName) {
+    var input = document.getElementById('input-skills');
+    if (!input) return;
+    var current = input.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    if (!current.includes(skillName)) {
+      current.push(skillName);
+      input.value = current.join(', ');
+      var form = document.getElementById('resume-editor-form');
+      if (form) { htmx.trigger(form, 'input'); }
+    }
+  }
+
+  // Disparo de persistência manual
   document.body.addEventListener('saveResume', function() {
     var form = document.getElementById('resume-editor-form');
     if (!form) return;
@@ -222,7 +1648,34 @@
       source: form,
       target: '#save-feedback',
       swap: 'innerHTML'
+    }).then(function() {
+      var indicator = document.getElementById('top-save-indicator');
+      var text = document.getElementById('top-save-text');
+      if (indicator && text) {
+        indicator.className = 'inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800';
+        text.innerText = 'Salvo';
+      }
     });
+  });
+
+  // Inicialização de abas por URL (?tab=editor) e mensagens de tradução
+  document.addEventListener('DOMContentLoaded', function() {
+    var params = new URLSearchParams(window.location.search);
+    var tab = params.get('tab');
+    if (tab && ['job', 'editor', 'copilot', 'dossier'].includes(tab)) {
+      switchStudioTab(tab);
+    }
+    if (params.get('translated') === '1') {
+      var feedback = document.getElementById('save-feedback');
+      if (feedback) {
+        feedback.innerHTML = `
+          <div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center justify-between animate-in fade-in">
+            <span>✅ Currículo traduzido com sucesso para o idioma selecionado!</span>
+            <button type="button" onclick="this.parentElement.remove()" class="text-emerald-600 font-bold ml-2 cursor-pointer">&times;</button>
+          </div>
+        `;
+      }
+    }
   });
 </script>
 {% endblock %}

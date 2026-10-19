@@ -11,6 +11,9 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.core.config import settings
+from app.core.logging import get_logger
+
+logger = get_logger("rate_limiter")
 
 limiter: Limiter = Limiter(
     key_func=get_remote_address,
@@ -31,6 +34,13 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
     Returns:
         JSONResponse com status 429, payload informativo e cabeçalho Retry-After.
     """
+    logger.warning(
+        "rate_limit_exceeded",
+        client_ip=get_remote_address(request),
+        path=request.url.path,
+        method=request.method,
+        detail=str(exc.detail),
+    )
     retry_after = "60"
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,

@@ -92,7 +92,7 @@ async def test_gemini_analyze_job_telemetry_success(
 
     captured = capsys.readouterr().out
     assert "gemini_job_analysis_completed" in captured
-    assert "model=gemini-1.5-flash" in captured or '"model": "gemini-1.5-flash"' in captured
+    assert f"model={adapter._model}" in captured or f'"model": "{adapter._model}"' in captured
     assert "prompt_tokens=120" in captured or '"prompt_tokens": 120' in captured
     assert "candidates_tokens=65" in captured or '"candidates_tokens": 65' in captured
     assert "total_tokens=185" in captured or '"total_tokens": 185' in captured
@@ -116,7 +116,7 @@ async def test_gemini_analyze_job_telemetry_empty_response(
 
     captured = capsys.readouterr().out
     assert "gemini_job_analysis_empty_response" in captured
-    assert "gemini-1.5-flash" in captured
+    assert adapter._model in captured
 
 
 @pytest.mark.asyncio

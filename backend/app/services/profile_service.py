@@ -434,6 +434,27 @@ class ProfileService:
             "languages": languages,
         }
 
+    async def has_dossier(self, user_id: uuid.UUID) -> bool:
+        """Verifica se o usuário possui ao menos uma entidade ativa cadastrada no dossiê.
+
+        Utiliza consultas indexadas leves com LIMIT 1 respeitando exclusão lógica.
+
+        Args:
+            user_id: UUID do usuário autenticado.
+
+        Returns:
+            bool: True se possui ao menos uma experiência, formação ou competência.
+        """
+        for model_cls in (Experience, Skill, Education):
+            filters = [model_cls.user_id == user_id]
+            if hasattr(model_cls, "deleted_at"):
+                filters.append(model_cls.deleted_at.is_(None))
+            stmt = select(model_cls.id).where(*filters).limit(1)
+            val = await self._db.scalar(stmt)
+            if val is not None:
+                return True
+        return False
+
     # ==================== IMPORTAÇÃO DE CURRÍCULO ====================
     async def import_parsed_profile(
         self, user_id: uuid.UUID, parsed_profile: ParsedProfileDTO
@@ -473,6 +494,9 @@ class ProfileService:
         for exp in parsed_profile.experiences:
             s_date = parse_flexible_date(exp.start_date) or date.today()
             e_date = parse_flexible_date(exp.end_date) if exp.end_date else None
+            exp_desc = exp.description.strip()
+            if not exp_desc and exp.bullet_points:
+                exp_desc = exp.bullet_points[0]
             await self.create_experience(
                 user_id=user_id,
                 data={
@@ -485,7 +509,7 @@ class ProfileService:
                     "start_date": s_date,
                     "end_date": e_date,
                     "is_current": exp.is_current,
-                    "description": exp.description.strip(),
+                    "description": exp_desc,
                     "bullet_points": exp.bullet_points,
                     "tech_stack": exp.tech_stack,
                     "quantifiable_results": exp.quantifiable_results,
@@ -575,11 +599,24 @@ class ProfileService:
         # Projetos
         proj_count = 0
         for proj in parsed_profile.projects:
+            desc_parts = (
+                [proj.description.strip()] if proj.description and proj.description.strip() else []
+            )
+            if proj.bullet_points:
+                bullet_lines = [
+                    f"• {b.strip()}"
+                    for b in proj.bullet_points
+                    if b.strip() and b.strip() not in (proj.description or "")
+                ]
+                if bullet_lines:
+                    desc_parts.append("\n".join(bullet_lines))
+            full_description = "\n\n".join(desc_parts) or proj.title.strip()
+
             await self.create_project(
                 user_id=user_id,
                 data={
                     "title": proj.title.strip(),
-                    "description": proj.description.strip(),
+                    "description": full_description,
                     "role": proj.role.strip() if proj.role else None,
                     "technologies": proj.technologies,
                     "repository_url": proj.repository_url.strip() if proj.repository_url else None,

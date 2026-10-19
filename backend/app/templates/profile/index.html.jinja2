@@ -25,7 +25,6 @@
                 hx-post="/profile/import-cv" 
                 hx-encoding="multipart/form-data" 
                 hx-target="#modal-container" 
-                hx-indicator="#import-spinner"
                 class="flex items-center gap-3">
                 
                 <input 
@@ -34,23 +33,96 @@
                     name="file" 
                     accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
                     class="hidden" 
-                    onchange="if(this.files.length) { htmx.trigger('#import-cv-form', 'submit'); }">
+                    onchange="handleFileInputChange(this)">
                 
                 <label 
                     for="resume-file-input" 
-                    class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all shadow-xs cursor-pointer focus-within:ring-2 focus-within:ring-indigo-500">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    id="top-cv-dropzone"
+                    ondragover="handleDragOver(event)"
+                    ondragleave="handleDragLeave(event)"
+                    ondrop="handleDrop(event)"
+                    class="cv-dropzone flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all shadow-xs cursor-pointer focus-within:ring-2 focus-within:ring-indigo-500">
+                    <svg id="top-upload-icon" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
-                    <span>Carregar Currículo (PDF/DOCX)</span>
-                    <span id="import-spinner" class="htmx-indicator animate-spin ml-1">⟳</span>
+                    <svg id="top-upload-spinner" class="animate-spin w-4 h-4 text-indigo-600 dark:text-indigo-400 hidden" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span id="top-upload-label">Carregar Currículo (Arraste ou Clique)</span>
                 </label>
             </form>
             <span class="block text-[10px] text-slate-500 dark:text-slate-400 mt-1 text-center md:text-right">
-                Extração 100% factual com Zero Alucinação
+                Extração 100% factual com Zero Alucinação (BYOK)
             </span>
         </div>
     </div>
+
+    <!-- BANNER HERO DE DRAG & DROP (Quando o dossiê estiver vazio) -->
+    {% if not (dossier and (dossier.experiences or dossier.skills or dossier.educations or dossier.projects)) %}
+    <div 
+        id="hero-cv-dropzone"
+        ondragover="handleDragOver(event)"
+        ondragleave="handleDragLeave(event)"
+        ondrop="handleDrop(event)"
+        onclick="document.getElementById('resume-file-input').click()"
+        role="region"
+        aria-label="Zona de upload de currículo por arrastar e soltar"
+        tabindex="0"
+        onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); document.getElementById('resume-file-input').click(); }"
+        class="cv-dropzone relative overflow-hidden p-8 sm:p-12 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700/80 bg-gradient-to-b from-indigo-50/40 to-white dark:from-indigo-950/20 dark:to-slate-900 text-center cursor-pointer transition-all duration-200 hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        
+        <!-- Estado 1: Normal (Idle) -->
+        <div id="hero-dropzone-idle" class="max-w-md mx-auto space-y-3 pointer-events-none">
+            <div class="w-16 h-16 rounded-2xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center mx-auto text-3xl shadow-xs">
+                📄
+            </div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                Arraste e solte seu currículo aqui
+            </h2>
+            <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Suporta documentos nos formatos <strong>PDF</strong> ou <strong>DOCX (Word)</strong>.<br>
+                Nossa IA extrai suas experiências, competências e formações para montar seu Dossiê Mestre factual.
+            </p>
+            <div class="pt-2">
+                <span class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold shadow-xs">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <span>Ou clique para selecionar no seu computador</span>
+                </span>
+            </div>
+        </div>
+
+        <!-- Estado 2: Loading Inline (Quando o arquivo é enviado e está pensando) -->
+        <div id="hero-dropzone-loading" class="hidden max-w-md mx-auto space-y-4 pointer-events-none py-2">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center mx-auto text-2xl shadow-xs">
+                <svg class="animate-spin w-7 h-7 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+            <div class="space-y-1.5">
+                <div class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold">
+                    <span>🧠 Gemini Thinking</span>
+                </div>
+                <h3 class="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Analisando seu Currículo
+                </h3>
+                <p id="hero-loading-step" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                    Lendo e interpretando o documento...
+                </p>
+                <div id="hero-loading-file" class="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-xs mx-auto"></div>
+            </div>
+            <div class="w-48 mx-auto bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                <div class="h-full bg-indigo-600 dark:bg-indigo-400 rounded-full animate-pulse w-full"></div>
+            </div>
+            <p class="text-[10.5px] text-slate-500 dark:text-slate-400">
+                Garantia Zero Alucinação: extraindo exclusivamente dados factuais
+            </p>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- 2. RESUMO DE IDENTIFICAÇÃO DO USUÁRIO -->
     <div class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
@@ -110,14 +182,14 @@
                 <div id="experiences-list" class="space-y-4">
                     {% if dossier and dossier.experiences %}
                         {% for exp in dossier.experiences %}
-                        <div class="p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+                        <div class="p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/80 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
                             <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-1">
                                 <div>
                                     <h4 class="font-bold text-sm text-slate-900 dark:text-slate-100">{{ exp.position_title }}</h4>
                                     <div class="text-xs font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
                                         {{ exp.company_name }}
-                                        {% if exp.location %} · <span class="text-slate-500 font-normal">{{ exp.location }}</span>{% endif %}
-                                        <span class="inline-block ml-1 px-1.5 py-0.2 rounded-sm bg-slate-200 dark:bg-slate-800 text-[10px] uppercase font-mono text-slate-600 dark:text-slate-400">{{ exp.work_model }}</span>
+                                        {% if exp.location %} · <span class="text-slate-500 dark:text-slate-400 font-normal">{{ exp.location }}</span>{% endif %}
+                                        <span class="inline-block ml-1 px-1.5 py-0.2 rounded-sm bg-slate-200 dark:bg-slate-700 text-[10px] uppercase font-mono text-slate-600 dark:text-slate-300">{{ exp.work_model }}</span>
                                     </div>
                                 </div>
                                 <span class="text-xs font-medium text-slate-500 dark:text-slate-400 font-mono">
@@ -127,15 +199,34 @@
                             </div>
 
                             {% if exp.description %}
-                            <p class="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                            <p class="text-xs text-slate-700 dark:text-slate-300 mt-2 leading-relaxed whitespace-pre-line">
                                 {{ exp.description }}
                             </p>
                             {% endif %}
 
+                            {% if exp.bullet_points %}
+                            <ul class="list-disc list-inside text-xs text-slate-700 dark:text-slate-300 mt-2 space-y-1 leading-relaxed pl-1">
+                                {% for bullet in exp.bullet_points %}
+                                <li>{{ bullet }}</li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+
+                            {% if exp.quantifiable_results %}
+                            <div class="mt-2 space-y-1">
+                                {% for res in exp.quantifiable_results %}
+                                <div class="text-xs text-emerald-600 dark:text-emerald-400 flex items-start gap-1.5">
+                                    <span class="text-xs">📈</span>
+                                    <span>{{ res }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
                             {% if exp.tech_stack %}
-                            <div class="flex flex-wrap gap-1 mt-3">
+                            <div class="flex flex-wrap gap-1 mt-3 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
                                 {% for tech in exp.tech_stack %}
-                                <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-700/90 text-slate-700 dark:text-slate-200 border border-slate-300/40 dark:border-slate-600/50">
                                     {{ tech }}
                                 </span>
                                 {% endfor %}
@@ -166,17 +257,17 @@
                 <div id="educations-list" class="space-y-3">
                     {% if dossier and dossier.educations %}
                         {% for edu in dossier.educations %}
-                        <div class="p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
+                        <div class="p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/80">
                             <div class="flex items-center justify-between">
                                 <h4 class="font-bold text-sm text-slate-900 dark:text-slate-100">
                                     {{ edu.degree }} em {{ edu.field_of_study }}
                                 </h4>
-                                <span class="text-xs text-slate-500 font-mono">
+                                <span class="text-xs text-slate-500 dark:text-slate-400 font-mono">
                                     {{ edu.start_date.strftime('%Y') if edu.start_date else '—' }} → 
                                     {{ edu.end_date.strftime('%Y') if edu.end_date else ('Atual' if edu.is_current else '—') }}
                                 </span>
                             </div>
-                            <div class="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                            <div class="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
                                 {{ edu.institution_name }}
                             </div>
                         </div>
@@ -211,7 +302,7 @@
                         </span>
                         {% endfor %}
                     {% else %}
-                        <p class="text-xs text-slate-500 italic">Nenhuma competência cadastrada.</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 italic">Nenhuma competência cadastrada.</p>
                     {% endif %}
                 </div>
             </section>
@@ -230,13 +321,13 @@
                 <div class="space-y-2">
                     {% if dossier and dossier.languages %}
                         {% for lang in dossier.languages %}
-                        <div class="flex items-center justify-between text-xs p-2 rounded-lg bg-slate-50 dark:bg-slate-850">
+                        <div class="flex items-center justify-between text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/80">
                             <span class="font-semibold text-slate-800 dark:text-slate-200">{{ lang.language_name }}</span>
-                            <span class="text-slate-500 capitalize">{{ lang.proficiency_level }}</span>
+                            <span class="text-slate-500 dark:text-slate-400 capitalize">{{ lang.proficiency_level }}</span>
                         </div>
                         {% endfor %}
                     {% else %}
-                        <p class="text-xs text-slate-500 italic">Nenhum idioma cadastrado.</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 italic">Nenhum idioma cadastrado.</p>
                     {% endif %}
                 </div>
             </section>
@@ -255,13 +346,68 @@
                 <div class="space-y-2">
                     {% if dossier and dossier.certifications %}
                         {% for cert in dossier.certifications %}
-                        <div class="text-xs p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
+                        <div class="text-xs p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/80">
                             <div class="font-semibold text-slate-900 dark:text-slate-100">{{ cert.name }}</div>
-                            <div class="text-slate-500 mt-0.5">{{ cert.issuing_organization }}</div>
+                            <div class="text-slate-500 dark:text-slate-400 mt-0.5">{{ cert.issuing_organization }}</div>
                         </div>
                         {% endfor %}
                     {% else %}
-                        <p class="text-xs text-slate-500 italic">Nenhuma certificação cadastrada.</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 italic">Nenhuma certificação cadastrada.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- PROJETOS -->
+            <section class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">🚀</span>
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-slate-100">
+                            Projetos ({{ (dossier.projects | length) if dossier and dossier.projects else 0 }})
+                        </h3>
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    {% if dossier and dossier.projects %}
+                        {% for proj in dossier.projects %}
+                        <div class="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/80 space-y-2">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <h4 class="font-bold text-xs sm:text-sm text-slate-900 dark:text-slate-100">{{ proj.title }}</h4>
+                                    {% if proj.role %}
+                                    <span class="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">{{ proj.role }}</span>
+                                    {% endif %}
+                                </div>
+                                <div class="flex items-center gap-2 text-xs">
+                                    {% if proj.repository_url %}
+                                    <a href="{{ proj.repository_url }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">GitHub ↗</a>
+                                    {% endif %}
+                                    {% if proj.live_url %}
+                                    <a href="{{ proj.live_url }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">Demo ↗</a>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            {% if proj.description %}
+                            <p class="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                                {{ proj.description }}
+                            </p>
+                            {% endif %}
+
+                            {% if proj.technologies %}
+                            <div class="flex flex-wrap gap-1 mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                                {% for tech in proj.technologies %}
+                                <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-700/90 text-slate-700 dark:text-slate-200 border border-slate-300/40 dark:border-slate-600/50">
+                                    {{ tech }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-xs text-slate-500 dark:text-slate-400 italic">Nenhum projeto cadastrado.</p>
                     {% endif %}
                 </div>
             </section>
@@ -271,4 +417,120 @@
     </div>
 
 </div>
+
+<script>
+    let thinkingInterval = null;
+    const thinkingSteps = [
+        "Lendo e interpretando o documento...",
+        "Analisando experiências e competências...",
+        "Validando dados factuais com IA (Zero Alucinação)...",
+        "Estruturando dossiê mestre..."
+    ];
+
+    function startThinkingAnimation(filename, fileSize) {
+        // 1. Atualiza o botão do topo (se existir)
+        const topIcon = document.getElementById('top-upload-icon');
+        const topSpinner = document.getElementById('top-upload-spinner');
+        const topLabel = document.getElementById('top-upload-label');
+        if (topIcon) topIcon.classList.add('hidden');
+        if (topSpinner) topSpinner.classList.remove('hidden');
+        if (topLabel) topLabel.textContent = 'Analisando currículo...';
+
+        // 2. Atualiza a Dropzone principal (se estiver visível)
+        const heroIdle = document.getElementById('hero-dropzone-idle');
+        const heroLoading = document.getElementById('hero-dropzone-loading');
+        const heroStep = document.getElementById('hero-loading-step');
+        const heroFile = document.getElementById('hero-loading-file');
+
+        if (heroIdle) heroIdle.classList.add('hidden');
+        if (heroLoading) heroLoading.classList.remove('hidden');
+        if (heroFile) heroFile.textContent = filename ? `${filename} (${fileSize || ''})` : '';
+
+        let stepIdx = 0;
+        if (heroStep) heroStep.textContent = thinkingSteps[0];
+
+        if (thinkingInterval) clearInterval(thinkingInterval);
+        thinkingInterval = setInterval(() => {
+            stepIdx = (stepIdx + 1) % thinkingSteps.length;
+            if (heroStep) heroStep.textContent = thinkingSteps[stepIdx];
+        }, 2200);
+    }
+
+    function stopThinkingAnimation() {
+        if (thinkingInterval) {
+            clearInterval(thinkingInterval);
+            thinkingInterval = null;
+        }
+
+        // Restaura botão do topo
+        const topIcon = document.getElementById('top-upload-icon');
+        const topSpinner = document.getElementById('top-upload-spinner');
+        const topLabel = document.getElementById('top-upload-label');
+        if (topIcon) topIcon.classList.remove('hidden');
+        if (topSpinner) topSpinner.classList.add('hidden');
+        if (topLabel) topLabel.textContent = 'Carregar Currículo (Arraste ou Clique)';
+
+        // Restaura Dropzone principal
+        const heroIdle = document.getElementById('hero-dropzone-idle');
+        const heroLoading = document.getElementById('hero-dropzone-loading');
+        if (heroIdle) heroIdle.classList.remove('hidden');
+        if (heroLoading) heroLoading.classList.add('hidden');
+    }
+
+    function handleFileInputChange(input) {
+        if (input.files && input.files.length > 0) {
+            const file = input.files[0];
+            const sizeStr = (file.size / 1024).toFixed(0) + ' KB';
+            startThinkingAnimation(file.name, sizeStr);
+            htmx.trigger('#import-cv-form', 'submit');
+        }
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const dropzones = document.querySelectorAll('.cv-dropzone');
+        dropzones.forEach(dz => {
+            dz.classList.add('border-indigo-600', 'dark:border-indigo-400', 'bg-indigo-100/80', 'dark:bg-indigo-900/60', 'scale-[1.01]', 'shadow-md');
+        });
+    }
+
+    function handleDragLeave(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const dropzones = document.querySelectorAll('.cv-dropzone');
+        dropzones.forEach(dz => {
+            dz.classList.remove('border-indigo-600', 'dark:border-indigo-400', 'bg-indigo-100/80', 'dark:bg-indigo-900/60', 'scale-[1.01]', 'shadow-md');
+        });
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleDragLeave(e);
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            const file = files[0];
+            const lowerName = file.name.toLowerCase();
+            if (!lowerName.endsWith('.pdf') && !lowerName.endsWith('.docx')) {
+                alert('Formato de arquivo não suportado. Por favor, envie um currículo em PDF ou Word (.docx).');
+                return;
+            }
+            const input = document.getElementById('resume-file-input');
+            if (input) {
+                input.files = files;
+                const sizeStr = (file.size / 1024).toFixed(0) + ' KB';
+                startThinkingAnimation(file.name, sizeStr);
+                htmx.trigger('#import-cv-form', 'submit');
+            }
+        }
+    }
+
+    // Limpa a animação e o timer quando a requisição HTMX finalizar
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.elt && evt.detail.elt.id === 'import-cv-form') {
+            stopThinkingAnimation();
+        }
+    });
+</script>
 {% endblock %}

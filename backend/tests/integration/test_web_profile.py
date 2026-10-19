@@ -131,6 +131,45 @@ async def test_import_cv_upload_parser_error_returns_modal(async_client: AsyncCl
 
 
 @pytest.mark.asyncio
+async def test_import_cv_upload_missing_key_returns_byok_modal(async_client: AsyncClient) -> None:
+    """VETOR DE AMEAÇA: Falha de configuração de credenciais BYOK e vazamento de chave do sistema.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    Quando a chave de API do Gemini não estiver configurada no perfil do usuário,
+    a extração de currículo deve falhar de forma segura (fail-closed) com HTTP 422
+    e renderizar o modal explicativo 100% BYOK com link para as configurações.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Se um refactor remover a validação de chave ausente ou tentar usar uma chave global
+    insegura, o princípio de 100% BYOK é quebrado ou o usuário fica sem feedback visual no HTMX.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    O endpoint /profile/import-cv deve retornar status 422 e o modal com '100% BYOK'
+    e 'Chave do Gemini Não Configurada'.
+    """
+    async_client.cookies.set("session_token", "valid_session_token")
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch("app.api.web.get_resume_parser_adapter") as mock_get_parser,
+    ):
+        mock_parser = AsyncMock()
+        mock_parser.parse_resume.side_effect = ResumeParserError(
+            "Chave de API do Gemini não configurada (100% BYOK)."
+        )
+        mock_get_parser.return_value = mock_parser
+
+        files = {"file": ("curriculo.pdf", b"%PDF-1.4 content", "application/pdf")}
+        res = await async_client.post("/profile/import-cv", files=files)
+        assert res.status_code == 422
+        assert "Chave do Gemini Não Configurada (100% BYOK)" in res.text
+        assert "/settings" in res.text
+
+
+@pytest.mark.asyncio
 async def test_import_cv_upload_success_returns_review_modal(async_client: AsyncClient) -> None:
     """Valida fluxo feliz de upload e renderização do modal de conferência dos dados extraídos."""
     mock_dto = ParsedProfileDTO(

@@ -274,14 +274,19 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
             f"/auth/callback/google?code=valid_code&state={state_new}", follow_redirects=False
         )
         assert res_callback.status_code == 302
-        assert res_callback.headers["location"] == "/"
+        assert res_callback.headers["location"] == "/profile"
         assert "session_token" in res_callback.cookies
 
-        # Acessa a home com o cookie gerado
-        res_home = await async_client.get("/", cookies=res_callback.cookies)
-        assert res_home.status_code == 200
-        assert "Real Google User" in res_home.text
-        assert "logout-btn" in res_home.text
+        # Acessa a home com o cookie gerado (deve redirecionar inteligentemente)
+        res_home = await async_client.get("/", cookies=res_callback.cookies, follow_redirects=False)
+        assert res_home.status_code == 302
+        assert res_home.headers["location"] in ("/profile", "/applications")
+
+        # Acessa o destino do redirecionamento com a sessão autenticada
+        res_dest = await async_client.get(res_home.headers["location"], cookies=res_callback.cookies)
+        assert res_dest.status_code == 200
+        assert "Real Google User" in res_dest.text
+        assert "logout-btn" in res_dest.text
 
     # 2. Usuário existente logando novamente (reutilização/atualização de perfil)
     state_exist = "state_exist_user_456"
@@ -300,7 +305,7 @@ async def test_google_callback_success_flow_new_and_existing_user(async_client: 
             follow_redirects=False,
         )
         assert res_callback2.status_code == 302
-        assert res_callback2.headers["location"] == "/"
+        assert res_callback2.headers["location"] == "/profile"
 
 
 def test_set_session_cookie_environment_behavior(monkeypatch):
@@ -367,7 +372,7 @@ async def test_google_callback_direct():
         auth_service=auth_service_mock,
     )
     assert resp.status_code == 302
-    assert resp.headers["location"] == "/"
+    assert resp.headers["location"] == "/profile"
     assert "session_token=jwt_token_google" in resp.headers.get("set-cookie", "")
     auth_service_mock.authenticate_oauth_user.assert_awaited_once()
 
