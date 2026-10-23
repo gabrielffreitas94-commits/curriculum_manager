@@ -25,6 +25,16 @@ async def test_healthz_liveness_probe(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_health_alias_liveness_probe(async_client: AsyncClient) -> None:
+    """Verifica se o alias /health responde com 200 e o mesmo payload de /healthz."""
+    response = await async_client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "thothcvs-backend"
+
+
+@pytest.mark.asyncio
 async def test_ready_readiness_probe(async_client: AsyncClient) -> None:
     """Verifica se o endpoint de readiness probe (/ready) responde adequadamente.
 

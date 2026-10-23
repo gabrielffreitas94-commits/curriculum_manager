@@ -2,12 +2,12 @@
      role="dialog"
      aria-modal="true"
      aria-labelledby="auth-modal-title"
-     class="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in duration-150">
+     class="app-modal-dialog max-w-sm p-6 sm:p-8 space-y-6">
     <!-- Botão Fechar (X) -->
     <button type="button" 
             onclick="closeModal()" 
             aria-label="Fechar modal"
-            class="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors cursor-pointer">
+            class="app-modal-close-btn absolute top-4 right-4">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
@@ -31,7 +31,7 @@
         <!-- Google -->
         <a href="/auth/login/google" 
            id="btn-login-google"
-           class="w-full flex items-center justify-center gap-3 h-11 px-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-sm cursor-pointer">
+           class="w-full flex items-center justify-center gap-3 h-11 px-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-sm cursor-pointer">
             <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
                 <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>

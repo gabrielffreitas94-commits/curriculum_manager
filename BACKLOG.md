@@ -88,3 +88,56 @@ Pesquisa, modelagem e integração de fluxos agênticos avançados (LangGraph / 
 - [ ] Disponibilização de ferramentas seguras (*tool calling*) isoladas em portas da Arquitetura Hexagonal (scraping, busca vetorial, validação de termos e renderização).
 - [ ] Auditoria de execução e observabilidade com métricas de telemetria por nó do grafo (latência, custo de tokens e rastreamento de decisões).
 
+---
+
+## 💳 Prioridade 4 (P4): Mudar para um Sistema Pago (Monetização, Planos & Assinaturas)
+
+Estruturar modelo de monetização SaaS, integração com gateway de pagamentos (ex: Stripe, Asaas ou Mercado Pago) e controle de acesso baseado em planos/quotas de uso.
+
+### 4.1 Gateway de Pagamentos & Webhooks
+- [ ] **Definição de Porta & Adaptador Hexagonal:**
+  - [ ] Criação da interface/porta abstrata `PaymentGatewayPort` (`app/ports/payment.py`).
+  - [ ] Implementação de adaptador concreto para gateway de pagamentos (ex: `StripePaymentAdapter` / Asaas / Mercado Pago).
+- [ ] **Fluxo de Checkout & Assinaturas:**
+  - [ ] Endpoints para criação e redirecionamento de sessões seguras de checkout (`POST /billing/checkout-session`).
+  - [ ] Integração com portal do cliente para autogerenciamento de pagamento, upgrade/downgrade de plano e alteração de método de cobrança (`POST /billing/portal-session`).
+- [ ] **Webhooks & Conciliação Assíncrona:**
+  - [ ] Endpoint dedicado para recepção de webhooks (`POST /billing/webhook`).
+  - [ ] Validação criptográfica de assinatura de payload de webhooks para mitigação de replay attacks e adulteração.
+  - [ ] Processamento idempotente de eventos de ciclo de vida (`invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted`).
+
+### 4.2 Modelagem de Dados & Gestão de Planos e Quotas
+- [ ] **Entidades de Domínio & Migrations Alembic:**
+  - [ ] Criação das tabelas relacionais `plans`, `subscriptions` e `invoices` associadas ao `user_id`.
+  - [ ] Ciclo de vida e estados da assinatura: `trialing`, `active`, `past_due`, `canceled`, `unpaid`.
+- [ ] **Motor de Quotas & Paywall (Fail-Closed):**
+  - [ ] Definição e configuração de limites por plano (ex: Plano Free vs. Pro/Premium):
+    - Limite de gerações de currículos com IA por período.
+    - Limite de correspondências semânticas e análises ATS.
+    - Exportações ilimitadas de PDF/DOCX e acesso a modelos avançados de currículo.
+  - [ ] Serviço de domínio para checagem e consumo de quotas (`SubscriptionService`).
+  - [ ] Interceptadores/middlewares de verificação de permissão e bloqueio amigável de paywall.
+
+### 4.3 Interface de Usuário (Next.js 15 & WCAG 2.1 AA)
+- [ ] **Página de Preços & Planos (Pricing Table):**
+  - [ ] Tabela comparativa de planos (Free, Mensal, Anual) acessível via teclado e leitores de tela.
+  - [ ] Destaque visual e semântico do plano recomendado.
+- [ ] **Modais de Paywall & Feedback de Limite:**
+  - [ ] Modais de upgrade contextuais exibidos ao atingir limites gratuitos.
+  - [ ] Banners informativos sobre status de pagamento pendente ou período de teste.
+- [ ] **Painel de Faturamento (Billing Settings):**
+  - [ ] Visualização do plano atual, data de renovação e consumo atual de quotas.
+  - [ ] Acesso direto ao histórico de faturas e botão para cancelamento/upgrade.
+
+### 4.4 Segurança, Observabilidade & Qualidade
+- [ ] **Segurança (AppSec / LGPD):**
+  - [ ] Zero retenção de dados sensíveis de cartão de crédito no banco de dados local (conformidade estrita PCI-DSS).
+  - [ ] Scrubbing de metadados financeiros em logs estruturados.
+- [ ] **Observabilidade & Telemetria:**
+  - [ ] Instrumentação de eventos de negócio (conversão em checkout, taxa de churn, falhas de pagamento).
+  - [ ] Medição de latência de chamadas externas à API do gateway de pagamento com métricas OTel/GCP.
+- [ ] **Garantia de Qualidade & Testes:**
+  - [ ] Testes unitários e de integração mockando respostas e webhooks do gateway.
+  - [ ] Testes de guardrail anti-regressão garantindo fail-closed para assinaturas expiradas ou inválidas.
+  - [ ] Manutenção estrita do Quality Gate de 100% de cobertura de código.
+

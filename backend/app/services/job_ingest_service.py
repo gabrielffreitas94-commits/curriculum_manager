@@ -90,7 +90,10 @@ class JobIngestService:
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Não foi possível processar o documento enviado: {exc}",
+                detail=(
+                    "Não foi possível processar o documento enviado. "
+                    "Verifique se o arquivo está corrompido ou em formato inválido."
+                ),
             ) from exc
 
         if not extracted_text.strip():
@@ -130,7 +133,7 @@ class JobIngestService:
             logger.warning("job_url_ssrf_blocked", url=url, error=str(exc))
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Acesso bloqueado por segurança: {exc}",
+                detail="Acesso bloqueado por segurança. O endereço informado não é permitido.",
             ) from exc
         except PayloadTooLargeError as exc:
             logger.warning("job_url_payload_too_large", url=url, error=str(exc))
@@ -145,10 +148,13 @@ class JobIngestService:
                 detail="Tempo limite esgotado ao tentar acessar a URL da vaga.",
             ) from exc
         except UrlScraperError as exc:
-            logger.error("job_url_scraper_error", url=url, error=str(exc))
+            logger.error("job_url_scraper_error", url=url, error=str(exc), exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Não foi possível obter a vaga a partir da URL informada: {exc}",
+                detail=(
+                    "Não foi possível obter a vaga a partir da URL informada. "
+                    "Verifique se o endereço é válido e está acessível."
+                ),
             ) from exc
 
         if not text.strip():

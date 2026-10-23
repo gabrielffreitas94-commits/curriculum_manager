@@ -12,6 +12,7 @@ router = APIRouter(tags=["Health"])
 
 
 @router.get("/healthz", status_code=status.HTTP_200_OK)
+@router.get("/health", status_code=status.HTTP_200_OK)
 async def liveness_probe() -> dict[str, Any]:
     """Sonda de liveness confirmando que o processo Uvicorn está de pé e respondendo.
 

@@ -113,7 +113,7 @@ async def test_parse_pdf_success(mock_client_class: MagicMock) -> None:
     mock_response.text = _create_mock_parsed_profile_json()
     mock_client.models.generate_content.return_value = mock_response
 
-    adapter = GeminiResumeParserAdapter(api_key="fake_api_key")
+    adapter = GeminiResumeParserAdapter(api_key="fake_api_key", model="gemini-2.5-flash")
     result = await adapter.parse_resume(
         file_bytes=b"%PDF-1.4 mock content",
         mime_type="application/pdf",
@@ -223,10 +223,29 @@ async def test_parse_gemini_exception_handled(mock_client_class: MagicMock) -> N
     """Valida que erros da API Gemini são convertidos em ParsingExecutionError tipado."""
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
-    mock_client.models.generate_content.side_effect = Exception("Google Cloud Quota Exceeded")
+    mock_client.models.generate_content.side_effect = Exception("Falha de rede ao consultar Gemini")
 
     adapter = GeminiResumeParserAdapter(api_key="fake_api_key")
     with pytest.raises(ParsingExecutionError, match="Falha ao extrair dados"):
+        await adapter.parse_resume(
+            file_bytes=b"%PDF-1.4 mock",
+            mime_type="application/pdf",
+            filename="cv.pdf",
+        )
+
+
+@patch("app.adapters.gemini_resume_parser_adapter.genai.Client")
+@pytest.mark.asyncio
+async def test_parse_gemini_503_raises_model_unavailable(mock_client_class: MagicMock) -> None:
+    """Valida que erro 503 levanta ParserModelUnavailableError com mensagem amigável."""
+    from app.ports.resume_parser_port import ParserModelUnavailableError
+
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.models.generate_content.side_effect = Exception("503 Service Unavailable")
+
+    adapter = GeminiResumeParserAdapter(api_key="fake_api_key")
+    with pytest.raises(ParserModelUnavailableError, match="temporariamente indisponível"):
         await adapter.parse_resume(
             file_bytes=b"%PDF-1.4 mock",
             mime_type="application/pdf",

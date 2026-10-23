@@ -4,10 +4,12 @@ Implementa pipeline assíncrono de observabilidade com mascaramento automático 
 e segredos (AppSec/LGPD), injeção de correlation_id via contextvars e formatação NDJSON.
 """
 
+import contextlib
 import logging
 import re
 import sys
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 import structlog
 
@@ -76,6 +78,13 @@ def pii_and_secrets_scrubber(
     for key in list(event_dict.keys()):
         key_lower = key.lower()
         if any(sensitive in key_lower for sensitive in SENSITIVE_KEYS):
+            # Contadores numéricos de tokens de LLMOps não são segredos/chaves de autenticação
+            if (
+                isinstance(event_dict[key], int | float)
+                or key_lower.endswith("_tokens")
+                or key_lower.endswith("_token_count")
+            ):
+                continue
             event_dict[key] = "[REDACTED]"
         else:
             event_dict[key] = _scrub_value(event_dict[key])
@@ -97,6 +106,26 @@ def inject_telemetry_context(
         event_dict["user_id"] = uid
 
     return event_dict
+
+
+class MultiWriter:
+    """Escreve logs simultaneamente no console (sys.stdout) e em arquivo persistente (app.log)."""
+
+    def __init__(self, file_path: Path) -> None:
+        self.file_path = file_path
+        with contextlib.suppress(Exception):
+            self.file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def write(self, message: str) -> int:
+        if hasattr(sys.stdout, "write"):
+            sys.stdout.write(message)
+        with contextlib.suppress(Exception), open(self.file_path, "a", encoding="utf-8") as f:
+            f.write(message)
+        return len(message)
+
+    def flush(self) -> None:
+        if hasattr(sys.stdout, "flush"):
+            sys.stdout.flush()
 
 
 def setup_logging(cloud_processor: Any | None = None) -> None:
@@ -128,14 +157,18 @@ def setup_logging(cloud_processor: Any | None = None) -> None:
     if settings.LOG_FORMAT.lower() == "console" and settings.ENVIRONMENT == "development":
         final_renderer: Any = structlog.dev.ConsoleRenderer()
     else:
-        final_renderer = structlog.processors.JSONRenderer()
+        final_renderer = structlog.processors.JSONRenderer(ensure_ascii=False)
+
+    logs_dir = Path(__file__).resolve().parent.parent.parent / "logs"
+    log_file = logs_dir / "app.log"
+    writer = MultiWriter(log_file)
 
     structlog.configure(
         processors=shared_processors + [final_renderer],
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        logger_factory=structlog.PrintLoggerFactory(file=cast(Any, writer)),
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
-        cache_logger_on_first_use=True,
+        cache_logger_on_first_use=False,
     )
 
 
@@ -152,3 +185,8 @@ def get_logger(name: str | None = None) -> Any:
     if name:
         return logger.bind(logger_name=name)
     return logger
+
+
+# Inicialização imediata com configurações padrão para garantir que loggers criados
+# em tempo de importação já tenham a pipeline de observabilidade ativa (zero pontos cegos).
+setup_logging()

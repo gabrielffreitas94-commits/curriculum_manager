@@ -17,7 +17,7 @@ from app.api.v1.schemas.resume import (
     ResumeGenerateResponse,
 )
 from app.core.url_scraper import URLScraperError
-from app.domain.models import PromptSkill, User
+from app.domain.models import GeneratedResume, PromptSkill, User, UserSettings
 
 MOCK_USER_ID = uuid.uuid4()
 MOCK_WEB_USER = User(
@@ -90,7 +90,19 @@ async def test_new_resume_page_authenticated_renders(async_client: AsyncClient) 
         assert "Oportunidade Alvo" in content
         assert "Google XYZ" in content
         assert "Método STAR" in content
-        assert "Copilot Estratégico de IA" in content
+        assert "generate-gemini-model" in content
+        assert "model-select-modal" not in content
+        assert "synthesis-action-error" in content
+        assert "Gemini 3.6 Flash" in content
+        assert "top-token-meter" not in content
+        assert "token-usage-bar" in content
+        assert "Tokens gastos:" in content
+        assert "token-reset-countdown" in content
+        assert "00:00 UTC" in content
+        assert "Retentar a cada 1 min" in content
+        assert "startAutoRetry1Min" in content
+        assert "playSuccessSound" in content
+        assert "auto-retry-panel-container" in content
 
 
 @pytest.mark.asyncio
@@ -429,7 +441,7 @@ async def test_copilot_chat_service_error_handled_gracefully(async_client: Async
         )
         assert res.status_code == 200
         assert "Falha ao comunicar com o assistente de IA" in res.text
-        assert "Google Gemini API Timeout" in res.text
+        assert "Google Gemini API Timeout" not in res.text
 
 
 @pytest.mark.asyncio
@@ -499,3 +511,323 @@ async def test_generate_custom_success_redirects_to_preview(async_client: AsyncC
         )
         assert res.status_code == 302
         assert res.headers["location"] == f"/resumes/{mock_resume_id}/preview"
+
+
+@pytest.mark.asyncio
+async def test_generate_custom_ajax_success_returns_json(async_client: AsyncClient) -> None:
+    """Valida que chamada assíncrona AJAX retorna JSON com redirect_url em caso de sucesso."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_resume_id = uuid.uuid4()
+    mock_response = ResumeGenerateResponse(
+        resume_id=mock_resume_id,
+        application_id=uuid.uuid4(),
+        version_number=1,
+        match_percentage=85.0,
+        match_analysis={},
+        structured_content={},
+    )
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.generate_resume",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ),
+    ):
+        res = await async_client.post(
+            "/resumes/generate-custom",
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+            data={
+                "job_description": "Vaga Python Tech Lead",
+                "prompt_skill_slug": "google-xyz",
+                "language": "en-US",
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["redirect_url"] == f"/resumes/{mock_resume_id}/preview"
+
+
+@pytest.mark.asyncio
+async def test_generate_custom_ajax_model_unavailable_returns_json_error_without_redirect(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que falha de modelo na chamada AJAX retorna 503 com mensagem amigável sem redirecionar a página."""
+    from app.ports.ai_port import ModelUnavailableError
+
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.generate_resume",
+            new_callable=AsyncMock,
+            side_effect=ModelUnavailableError(
+                "Esse modelo está temporariamente indisponível.", model="gemini-3.8-flash"
+            ),
+        ),
+    ):
+        res = await async_client.post(
+            "/resumes/generate-custom",
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+            data={
+                "job_description": "Vaga Python Tech Lead",
+                "prompt_skill_slug": "google-xyz",
+            },
+        )
+        assert res.status_code == 503
+        data = res.json()
+        assert data["status"] == "error"
+        assert "temporariamente indisponível" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_translate_resume_endpoint_ajax_success(async_client: AsyncClient) -> None:
+    """Valida que o endpoint de tradução direta traduz e retorna JSON de sucesso mantendo rota do editor."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_resume_id = uuid.uuid4()
+    mock_resume = GeneratedResume(
+        id=mock_resume_id,
+        user_id=MOCK_USER_ID,
+        version_number=1,
+        language="en-US",
+        structured_content={"header": {"target_title": "Senior Engineer"}},
+    )
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.translate_resume",
+            new_callable=AsyncMock,
+            return_value=mock_resume,
+        ),
+    ):
+        res = await async_client.post(
+            f"/resumes/{mock_resume_id}/translate",
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+            data={"language": "en-US"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["redirect_url"] == f"/resumes/{mock_resume_id}/preview?tab=editor&translated=1"
+
+
+@pytest.mark.asyncio
+async def test_translate_resume_endpoint_model_unavailable_returns_503(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que falha de modelo na tradução retorna 503 com mensagem amigável."""
+    from app.ports.ai_port import ModelUnavailableError
+
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_resume_id = uuid.uuid4()
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.translate_resume",
+            new_callable=AsyncMock,
+            side_effect=ModelUnavailableError(
+                "Esse modelo está temporariamente indisponível.", model="gemini-3.8-flash"
+            ),
+        ),
+    ):
+        res = await async_client.post(
+            f"/resumes/{mock_resume_id}/translate",
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+            data={"language": "en-US"},
+        )
+        assert res.status_code == 503
+        data = res.json()
+        assert data["status"] == "error"
+        assert "temporariamente indisponível" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_generate_custom_with_model_choice_persists_settings(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que envio de model_choice em generate-custom persiste modelo nas configurações do usuário."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_resume_id = uuid.uuid4()
+    mock_response = ResumeGenerateResponse(
+        resume_id=mock_resume_id,
+        application_id=uuid.uuid4(),
+        version_number=1,
+        match_percentage=90.0,
+        match_analysis={},
+        structured_content={},
+    )
+    user_settings = UserSettings(user_id=MOCK_USER_ID, gemini_model="gemini-3.8-flash")
+    mock_db_res = MagicMock()
+    mock_db_res.scalar_one_or_none.return_value = user_settings
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.generate_resume",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_res,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock) as mock_commit,
+    ):
+        res = await async_client.post(
+            "/resumes/generate-custom",
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+            data={
+                "job_description": "Vaga Desenvolvedor Fullstack Python",
+                "prompt_skill_slug": "google-xyz",
+                "language": "pt-BR",
+                "model_choice": "gemini-3.6-flash:high",
+            },
+        )
+        assert res.status_code == 200
+        assert user_settings.gemini_model == "gemini-3.6-flash"
+        assert user_settings.gemini_thinking_level == "high"
+        mock_commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_regenerate_from_chat_unauthenticated_redirects(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que requisição não autenticada para regerar redireciona para login."""
+    test_id = uuid.uuid4()
+    with patch(
+        "app.services.auth_service.AuthService.get_authenticated_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        res = await async_client.post(
+            f"/resumes/{test_id}/regenerate-from-chat",
+            data={"history_json": "[]", "prompt_skill_slug": "google-xyz"},
+        )
+        assert res.status_code == 302
+        assert "login_required" in res.headers["location"]
+
+
+@pytest.mark.asyncio
+async def test_regenerate_from_chat_unauthenticated_htmx_returns_401(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que requisição HTMX não autenticada retorna 401 com HX-Redirect."""
+    test_id = uuid.uuid4()
+    with patch(
+        "app.services.auth_service.AuthService.get_authenticated_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        res = await async_client.post(
+            f"/resumes/{test_id}/regenerate-from-chat",
+            headers={"HX-Request": "true"},
+            data={"history_json": "[]", "prompt_skill_slug": "google-xyz"},
+        )
+        assert res.status_code == 401
+        assert res.headers.get("HX-Redirect") == "/?auth_error=login_required"
+
+
+@pytest.mark.asyncio
+async def test_regenerate_from_chat_empty_messages_returns_400(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que enviar histórico vazio retorna 400 com aviso no partial."""
+    test_id = uuid.uuid4()
+    mock_resume = GeneratedResume(
+        id=test_id,
+        user_id=MOCK_USER_ID,
+        application_id=uuid.uuid4(),
+        version_number=1,
+        language="pt-BR",
+        structured_content={},
+        match_analysis={},
+    )
+    mock_exec = MagicMock()
+    mock_exec.scalar_one_or_none.return_value = mock_resume
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_exec,
+        ),
+    ):
+        res = await async_client.post(
+            f"/resumes/{test_id}/regenerate-from-chat",
+            data={"history_json": "[]", "prompt_skill_slug": "google-xyz"},
+        )
+        assert res.status_code == 400
+        assert "converse com o Copilot antes" in res.text
+
+
+@pytest.mark.asyncio
+async def test_regenerate_from_chat_success_flow(
+    async_client: AsyncClient,
+) -> None:
+    """Valida sucesso na regeração redirecionando para a nova versão."""
+    test_id = uuid.uuid4()
+    new_id = uuid.uuid4()
+    mock_res_dto = ResumeGenerateResponse(
+        resume_id=new_id,
+        application_id=uuid.uuid4(),
+        version_number=2,
+        match_percentage=98.0,
+        match_analysis={},
+        structured_content={},
+    )
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.regenerate_resume_from_chat",
+            new_callable=AsyncMock,
+            return_value=mock_res_dto,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock),
+    ):
+        res = await async_client.post(
+            f"/resumes/{test_id}/regenerate-from-chat",
+            headers={"HX-Request": "true"},
+            data={
+                "history_json": json.dumps([{"role": "user", "content": "foca em Python"}]),
+                "prompt_skill_slug": "google-xyz",
+            },
+        )
+        assert res.status_code == 200
+        assert res.headers.get("HX-Redirect") == f"/resumes/{new_id}?tab=editor"

@@ -187,7 +187,7 @@ async def test_generate_resume_prompt_injection_defense_guardrail() -> None:
     assert "</untrusted_job_posting>" in contents
     assert contents.count("</untrusted_job_posting>") == 1
     assert contents.count("<untrusted_job_posting>") == 1
-    assert "DADO NÃO CONFIÁVEL" in contents
+    assert "REQUISITOS DA VAGA" in contents
 
     config = call_kwargs["config"]
     assert config.system_instruction is not None

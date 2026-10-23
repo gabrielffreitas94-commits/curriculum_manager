@@ -138,10 +138,15 @@ class CopilotService:
                 detail="Chave de API do Gemini não configurada. Cadastre-a nas configurações.",
             ) from exc
         except AIError as exc:
-            logger.error("copilot_chat_upstream_error", user_id=str(user.id), error=str(exc))
+            logger.error(
+                "copilot_chat_upstream_error",
+                user_id=str(user.id),
+                error=str(exc),
+                exc_info=True,
+            )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Falha na comunicação com o Copilot de IA: {exc}",
+                detail="Falha na comunicação com o Copilot de IA. Tente novamente mais tarde.",
             ) from exc
 
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)

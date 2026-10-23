@@ -1,0 +1,97 @@
+name: CD - Deploy to Google Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente de destino para o deploy"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
+
+concurrency:
+  group: cd-cloud-run-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SERVICE_NAME: thothcvs-ai
+  GCP_REGION: southamerica-east1
+
+jobs:
+  deploy:
+    name: "CD: Build & Deploy to Google Cloud Run"
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Check GCP Deployment Secrets
+        id: check_secrets
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$GCP_PROJECT_ID" ] || [ -z "$GCP_WORKLOAD_IDENTITY_PROVIDER" ] || [ -z "$GCP_SERVICE_ACCOUNT" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Secrets de deploy GCP ainda não configurados no GitHub Actions. Pulando etapa de publicação remota."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        if: steps.check_secrets.outputs.configured == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        if: steps.check_secrets.outputs.configured == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        if: steps.check_secrets.outputs.configured == 'true'
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and Push Container Image
+        if: steps.check_secrets.outputs.configured == 'true'
+        working-directory: backend
+        env:
+          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        run: |
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+
+      - name: Deploy to Google Cloud Run
+        if: steps.check_secrets.outputs.configured == 'true'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          flags: >-
+            --allow-unauthenticated
+            --port=8000
+            --min-instances=0
+            --max-instances=5
+            --memory=1Gi
+            --cpu=1
+            --set-env-vars=ENVIRONMENT=production
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,MASTER_ENCRYPTION_KEY=MASTER_ENCRYPTION_KEY:latest,SECRET_KEY=SECRET_KEY:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,GOOGLE_REDIRECT_URI=GOOGLE_REDIRECT_URI:latest

@@ -15,9 +15,12 @@ from sqlalchemy.orm import selectinload
 from app.adapters.firebase_auth_adapter import FirebaseAuthAdapter
 from app.adapters.google_oauth_adapter import GoogleOAuthAdapter
 from app.core.database import get_db_session
+from app.core.logging import get_logger
 from app.domain.models import User
 from app.ports.auth_port import AuthError, AuthUser, InvalidTokenError
 from app.ports.oauth_port import OAuthPort
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from app.ports.resume_parser_port import ResumeParserPort
@@ -25,6 +28,7 @@ if TYPE_CHECKING:
     from app.services.auth_service import AuthService
     from app.services.copilot_service import CopilotService
     from app.services.document_service import DocumentService
+    from app.services.job_hunter_service import JobHunterService
     from app.services.job_ingest_service import JobIngestService
     from app.services.profile_service import ProfileService
     from app.services.prompt_skill_service import PromptSkillService
@@ -57,15 +61,17 @@ async def get_current_auth_user(
     try:
         return await auth_adapter.verify_token(token)
     except InvalidTokenError as exc:
+        logger.warning("auth_token_invalid_or_expired", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Credencial de autenticação inválida ou expirada: {exc}",
+            detail="Credencial de autenticação inválida ou expirada.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
     except AuthError as exc:
+        logger.warning("auth_validation_failed", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Falha de autenticação: {exc}",
+            detail="Falha de autenticação.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
@@ -196,18 +202,45 @@ def resolve_gemini_api_key(user: User | None = None) -> str | None:
     return os.getenv("GEMINI_API_KEY")
 
 
-def get_resume_parser_adapter(api_key: str | None = None) -> "ResumeParserPort":
+def resolve_gemini_model(user: User | None = None) -> str:
+    """Resolve o modelo configurado para o usuário ou default do sistema."""
+    from app.core.config import settings
+
+    if user and user.settings and user.settings.gemini_model:
+        model = user.settings.gemini_model.strip()
+        if model in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"):
+            return settings.DEFAULT_GEMINI_MODEL
+        return model
+    return settings.DEFAULT_GEMINI_MODEL
+
+
+def resolve_gemini_thinking_level(user: User | None = None) -> str:
+    """Resolve o nível de esforço de raciocínio (thinking_level) para o usuário."""
+    from app.core.config import settings
+
+    if user and user.settings and user.settings.gemini_thinking_level:
+        return user.settings.gemini_thinking_level
+    return settings.DEFAULT_GEMINI_THINKING_LEVEL
+
+
+def get_resume_parser_adapter(
+    api_key: str | None = None,
+    model: str | None = None,
+    thinking_level: str | None = None,
+) -> "ResumeParserPort":
     """Instancia o adaptador concreto de parsing de currículos.
 
     Args:
         api_key: Chave do Gemini decifrada ou default.
+        model: Identificador do modelo do Gemini.
+        thinking_level: Nível de esforço de raciocínio.
 
     Returns:
         ResumeParserPort: Instância do adaptador de parsing.
     """
     from app.adapters.gemini_resume_parser_adapter import GeminiResumeParserAdapter
 
-    return GeminiResumeParserAdapter(api_key=api_key)
+    return GeminiResumeParserAdapter(api_key=api_key, model=model, thinking_level=thinking_level)
 
 
 async def get_prompt_skill_service(
@@ -254,7 +287,9 @@ async def get_copilot_service(
     from app.services.copilot_service import CopilotService
 
     api_key = resolve_gemini_api_key(current_user)
-    ai_adapter = GeminiAIAdapter(api_key=api_key)
+    model = resolve_gemini_model(current_user)
+    thinking_level = resolve_gemini_thinking_level(current_user)
+    ai_adapter = GeminiAIAdapter(api_key=api_key, model=model, thinking_level=thinking_level)
     return CopilotService(db=db, ai_port=ai_adapter)
 
 
@@ -272,7 +307,9 @@ def create_copilot_service(db: AsyncSession, user: User) -> "CopilotService":
     from app.services.copilot_service import CopilotService
 
     api_key = resolve_gemini_api_key(user)
-    ai_adapter = GeminiAIAdapter(api_key=api_key)
+    model = resolve_gemini_model(user)
+    thinking_level = resolve_gemini_thinking_level(user)
+    ai_adapter = GeminiAIAdapter(api_key=api_key, model=model, thinking_level=thinking_level)
     return CopilotService(db=db, ai_port=ai_adapter)
 
 
@@ -306,3 +343,28 @@ async def get_application_service(
     from app.services.application_service import ApplicationService
 
     return ApplicationService(db=db)
+
+
+async def get_job_hunter_service(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> "JobHunterService":
+    """Injeta instância de JobHunterService configurada com adaptadores de IA e scraping.
+
+    Args:
+        db: Sessão ativa do banco de dados relacional.
+        current_user: Usuário autenticado proprietário.
+
+    Returns:
+        JobHunterService pronto para triagem e busca autônoma de vagas.
+    """
+    from app.adapters.gemini_ai_adapter import GeminiAIAdapter
+    from app.adapters.job_source_adapter import HttpJobSourceAdapter
+    from app.services.job_hunter_service import JobHunterService
+
+    api_key = resolve_gemini_api_key(current_user)
+    model = resolve_gemini_model(current_user)
+    thinking_level = resolve_gemini_thinking_level(current_user)
+    ai_adapter = GeminiAIAdapter(api_key=api_key, model=model, thinking_level=thinking_level)
+    source_adapter = HttpJobSourceAdapter()
+    return JobHunterService(db=db, ai_port=ai_adapter, job_source_port=source_adapter)

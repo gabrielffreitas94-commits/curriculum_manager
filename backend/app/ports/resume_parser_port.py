@@ -17,6 +17,14 @@ class ParsingExecutionError(ResumeParserError):
     """Lançada quando a engine de IA ou o parser falha ao processar o documento."""
 
 
+class ParserModelUnavailableError(ParsingExecutionError):
+    """Lançada quando o modelo do parser está temporariamente indisponível ou sobrecarregado."""
+
+    def __init__(self, message: str, model: str | None = None) -> None:
+        super().__init__(message)
+        self.model = model
+
+
 class CorruptedFileError(ResumeParserError):
     """Lançada quando o arquivo não pôde ser lido estruturalmente."""
 
@@ -48,10 +56,28 @@ class ParsedExperienceDTO(BaseModel):
     start_date: str = Field(..., description="Data em formato YYYY-MM-DD ou YYYY-MM")
     end_date: str | None = None
     is_current: bool = False
-    description: str = ""
-    bullet_points: list[str] = Field(default_factory=list)
-    tech_stack: list[str] = Field(default_factory=list)
-    quantifiable_results: list[str] = Field(default_factory=list)
+    description: str = Field(
+        default="",
+        description=(
+            "Resumo narrativo das atividades e responsabilidades principais da "
+            "experiência profissional"
+        ),
+    )
+    bullet_points: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Lista de realizações, projetos, responsabilidades e atividades "
+            "extraídas integralmente do currículo"
+        ),
+    )
+    tech_stack: list[str] = Field(
+        default_factory=list,
+        description="Linguagens, frameworks, ferramentas e tecnologias mencionadas no cargo",
+    )
+    quantifiable_results: list[str] = Field(
+        default_factory=list,
+        description="Métricas de impacto, números, percentuais e resultados de negócio alcançados",
+    )
 
 
 class ParsedEducationDTO(BaseModel):
@@ -107,9 +133,30 @@ class ParsedProjectDTO(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     title: str = Field(..., max_length=150)
-    description: str = ""
-    role: str | None = None
-    technologies: list[str] = Field(default_factory=list)
+    description: str = Field(
+        default="",
+        description=(
+            "Detalhamento integral e completo do projeto, escopo, arquitetura, objetivos, "
+            "desafios e resultados alcançados, sem resumir ou omitir detalhes do currículo"
+        ),
+    )
+    role: str | None = Field(
+        default=None,
+        description="Papel exercido no projeto (ex: Tech Lead, Desenvolvedor Fullstack, Criador)",
+    )
+    technologies: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Linguagens, frameworks, bibliotecas, bancos e ferramentas utilizadas no projeto"
+        ),
+    )
+    bullet_points: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Lista de realizações, funcionalidades, entregas ou desafios do projeto "
+            "extraídos integralmente do documento original"
+        ),
+    )
     repository_url: str | None = None
     live_url: str | None = None
 

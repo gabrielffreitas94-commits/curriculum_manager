@@ -5,6 +5,23 @@
 {% block main_class %}w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8{% endblock %}
 
 {% block content %}
+{% set cur_user_model = current_user.settings.gemini_model if (current_user and current_user.settings and current_user.settings.gemini_model) else 'gemini-3.8-flash' %}
+{% set cur_user_thinking = current_user.settings.gemini_thinking_level if (current_user and current_user.settings and current_user.settings.gemini_thinking_level) else 'medium' %}
+{% if cur_user_model == 'gemini-3.8-flash' %}
+  {% set cur_model_name = 'Gemini 3.8 Flash' %}
+{% elif cur_user_model == 'gemini-3.6-flash' %}
+  {% set cur_model_name = 'Gemini 3.6 Flash' %}
+{% elif cur_user_model == 'gemini-3.7-flash' %}
+  {% set cur_model_name = 'Gemini 3.7 Flash' %}
+{% elif cur_user_model == 'gemini-3.5-flash' %}
+  {% set cur_model_name = 'Gemini 3.5 Flash' %}
+{% elif cur_user_model == 'gemini-3.1-pro-preview' %}
+  {% set cur_model_name = 'Gemini 3.1 Pro' %}
+{% elif cur_user_model == 'gemini-3-flash-preview' %}
+  {% set cur_model_name = 'Gemini 3 Flash' %}
+{% else %}
+  {% set cur_model_name = cur_user_model %}
+{% endif %}
 <div class="space-y-8">
   <!-- Topo da Página -->
   <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
@@ -21,6 +38,19 @@
         📝 Ver Dossiê Mestre
       </a>
     </div>
+  </div>
+
+  <!-- Container de Alertas Inline (Sem recarregar a tela) -->
+  <div id="synthesis-alert-container">
+    {% if error_message %}
+    <div class="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/80 text-rose-800 dark:text-rose-300 flex items-start gap-3 shadow-xs">
+      <span class="text-lg">⚠️</span>
+      <div class="space-y-1 text-xs">
+        <div class="font-bold">Aviso na Geração do Currículo</div>
+        <div>{{ error_message }}</div>
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   <!-- Layout Principal em Grid Responsivo -->
@@ -212,33 +242,160 @@
         </div>
       </div>
 
-      <!-- 3. BARRA DE AÇÃO PRINCIPAL -->
-      <div class="flex flex-col sm:flex-row items-center gap-3">
-        <form 
-          id="match-analysis-form"
-          hx-post="/resumes/analyze-match" 
-          hx-target="#match-analysis-container" 
-          hx-swap="outerHTML" 
-          hx-indicator="#match-spinner"
-          class="w-full sm:w-auto flex-1">
-          <input type="hidden" id="match-job-desc" name="job_description" value="">
-          <button 
-            type="submit" 
-            class="w-full py-3 px-5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs sm:text-sm font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer">
-            <span>🎯 Avaliar Aderência com Dossiê</span>
-            <span id="match-spinner" class="htmx-indicator animate-spin">⟳</span>
-          </button>
-        </form>
+      <!-- 3. CARD DE IDIOMA DO CURRÍCULO -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <h2 class="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 text-xs flex items-center justify-center font-bold">3</span>
+            Idioma de Redação do Currículo
+          </h2>
+          <span class="text-[11px] text-slate-400">Localização e Vocabulário ATS</span>
+        </div>
 
-        <button 
-          type="button" 
-          onclick="triggerResumeSynthesis()"
-          class="w-full sm:w-auto py-3 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer">
-          <span>✨ Gerar Currículo Sob Medida</span>
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-          </svg>
-        </button>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5" role="radiogroup" aria-label="Selecione o idioma em que o currículo será escrito">
+          <label class="flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 dark:border-indigo-500 lang-card" id="lang-card-pt-BR">
+            <input type="radio" name="language_choice" value="pt-BR" checked onchange="selectLanguage('pt-BR')" class="accent-indigo-600">
+            <span class="text-xs font-semibold text-slate-900 dark:text-slate-100">
+              🇧🇷 Português (BR)
+            </span>
+          </label>
+          <label class="flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 lang-card" id="lang-card-en-US">
+            <input type="radio" name="language_choice" value="en-US" onchange="selectLanguage('en-US')" class="accent-indigo-600">
+            <span class="text-xs font-semibold text-slate-900 dark:text-slate-100">
+              🇺🇸 English (US)
+            </span>
+          </label>
+          <label class="flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 lang-card" id="lang-card-es-ES">
+            <input type="radio" name="language_choice" value="es-ES" onchange="selectLanguage('es-ES')" class="accent-indigo-600">
+            <span class="text-xs font-semibold text-slate-900 dark:text-slate-100">
+              🇪🇸 Español
+            </span>
+          </label>
+          <label class="flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 lang-card" id="lang-card-pt-PT">
+            <input type="radio" name="language_choice" value="pt-PT" onchange="selectLanguage('pt-PT')" class="accent-indigo-600">
+            <span class="text-xs font-semibold text-slate-900 dark:text-slate-100">
+              🇵🇹 Português (PT)
+            </span>
+          </label>
+          <label class="flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 lang-card" id="lang-card-en-GB">
+            <input type="radio" name="language_choice" value="en-GB" onchange="selectLanguage('en-GB')" class="accent-indigo-600">
+            <span class="text-xs font-semibold text-slate-900 dark:text-slate-100">
+              🇬🇧 English (UK)
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Mensagem de Validação do Cliente -->
+      <div id="synthesis-client-error" class="hidden p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 font-medium flex items-center gap-2">
+        <span>⚠️</span>
+        <span>Por favor, informe ou importe a descrição da vaga antes de gerar o currículo sob medida.</span>
+      </div>
+
+      <!-- 4. BARRA DE AÇÃO PRINCIPAL -->
+      <div class="space-y-3 pt-2">
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <form 
+            id="match-analysis-form"
+            hx-post="/resumes/analyze-match" 
+            hx-target="#match-analysis-container" 
+            hx-swap="outerHTML" 
+            hx-indicator="#match-spinner"
+            class="w-full sm:w-auto flex-1">
+            <input type="hidden" id="match-job-desc" name="job_description" value="">
+            <button 
+              type="submit" 
+              class="w-full py-3 px-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs sm:text-sm font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer">
+              <span>🎯 Avaliar Aderência com Dossiê</span>
+              <span id="match-spinner" class="htmx-indicator animate-spin">⟳</span>
+            </button>
+          </form>
+
+          <!-- Seletor Dropdown de Modelo diretamente ao lado do Botão de Gerar -->
+          {% set cur_model = current_user.settings.gemini_model if (current_user and current_user.settings and current_user.settings.gemini_model) else 'gemini-3.8-flash' %}
+          {% set cur_thinking = current_user.settings.gemini_thinking_level if (current_user and current_user.settings and current_user.settings.gemini_thinking_level) else 'medium' %}
+          {% set current_model_choice = cur_model ~ ':' ~ cur_thinking %}
+          <div class="relative flex items-center shrink-0">
+            <span class="absolute left-3 text-sm pointer-events-none z-10" title="Modelo de IA e Nível de Raciocínio">🧠</span>
+            <label for="generate-gemini-model" class="sr-only">Modelo de IA</label>
+            <select 
+              id="generate-gemini-model" 
+              onchange="updateGenerateModel(this.value)"
+              class="pl-9 pr-9 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs sm:text-sm font-semibold shadow-xs hover:border-slate-400 dark:hover:border-slate-600 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden cursor-pointer transition-colors"
+              title="Selecione o modelo do Gemini para gerar o currículo">
+              <optgroup label="Gemini 3.8 Flash" class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold">
+                <option value="gemini-3.8-flash:low" class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" {% if current_model_choice == 'gemini-3.8-flash:low' %}selected{% endif %}>⚡ Gemini 3.8 Flash (Low)</option>
+                <option value="gemini-3.8-flash:medium" class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" {% if current_model_choice == 'gemini-3.8-flash:medium' or not current_user or not current_user.settings %}selected{% endif %}>⚡ Gemini 3.8 Flash (Medium)</option>
+                <option value="gemini-3.8-flash:high" class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" {% if current_model_choice == 'gemini-3.8-flash:high' %}selected{% endif %}>⚡ Gemini 3.8 Flash (High)</option>
+              </optgroup>
+              <optgroup label="Outros Modelos" class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold">
+                <option value="gemini-3.7-flash:medium" class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" {% if cur_model == 'gemini-3.7-flash' %}selected{% endif %}>Gemini 3.7 Flash</option>
+                <option value="gemini-3.6-flash:medium" class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" {% if cur_model == 'gemini-3.6-flash' %}selected{% endif %}>Gemini 3.6 Flash</option>
+              </optgroup>
+            </select>
+            <span id="generate-model-status" class="absolute right-3 text-xs text-emerald-600 dark:text-emerald-400 font-bold hidden pointer-events-none">✓</span>
+            <span id="generate-model-spinner" class="absolute right-3 text-xs text-indigo-500 animate-spin hidden pointer-events-none">⟳</span>
+          </div>
+
+          <button 
+            type="button" 
+            id="btn-generate-resume"
+            onclick="triggerResumeSynthesis()"
+            class="w-full sm:w-auto py-3 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0">
+            <span id="btn-generate-text">✨ Gerar Currículo Sob Medida</span>
+            <svg id="btn-generate-icon" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+            <svg id="btn-generate-spinner" class="w-4 h-4 animate-spin hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Medidor de Tokens Próximo ao Botão de Gerar (x / y gastos e tempo até próximo reset) -->
+        {% set tokens_today_num = token_usage.tokens_used_today if token_usage else ((current_user.settings.tokens_used_today if (current_user and current_user.settings) else 0)) %}
+        {% set tokens_limit_num = token_usage.tokens_limit_daily if token_usage else 1000000 %}
+        {% set tokens_percent = token_usage.tokens_percent_used if token_usage else 0.0 %}
+        {% set formatted_spent = token_usage.formatted_tokens_today if token_usage else "{:,}".format(tokens_today_num).replace(",", ".") %}
+        {% set formatted_limit = token_usage.formatted_tokens_limit_daily if token_usage else "{:,}".format(tokens_limit_num).replace(",", ".") %}
+        {% set reset_time_str = token_usage.formatted_time_until_reset if token_usage else "" %}
+        {% set reset_seconds = token_usage.seconds_until_reset if token_usage else 0 %}
+
+        <div id="token-usage-bar" 
+             class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-slate-600 dark:text-slate-300 shadow-xs">
+          <div class="flex items-center gap-2">
+            <span class="text-base" title="Consumo de Tokens da IA">📊</span>
+            <div>
+              <span class="font-medium text-slate-700 dark:text-slate-300">Tokens gastos:</span>
+              <span id="token-spent-display" class="font-bold font-mono text-indigo-600 dark:text-indigo-400 ml-1">
+                {{ formatted_spent }} / {{ formatted_limit }}
+              </span>
+              <span class="text-[11px] text-slate-400 dark:text-slate-500 ml-1 font-normal" id="token-percent-display">
+                ({{ tokens_percent }}% da cota diária)
+              </span>
+            </div>
+          </div>
+          
+          <div class="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <span>⏱️</span>
+            <span>Próximo reset em:</span>
+            <span id="token-reset-countdown" 
+                  class="font-semibold text-slate-700 dark:text-slate-200 font-mono" 
+                  data-seconds="{{ reset_seconds }}">
+              {{ reset_time_str if reset_time_str else "--" }} (00:00 UTC)
+            </span>
+            <button type="button" 
+                    class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors ml-0.5 cursor-pointer text-xs" 
+                    title="Tokens são unidades de texto processadas pelo Gemini. Cada currículo consome em média 6.500 tokens. A sua cota diária é de 1.000.000 tokens e é renovada todo dia à 00:00 UTC sem custos."
+                    aria-label="Explicação sobre tokens e quota diária">
+              ℹ️
+            </button>
+          </div>
+        </div>
+
+        <!-- Área de Alerta / Erro Imediatamente Próxima ao Botão de Gerar (SEM SCROLL) -->
+        <div id="synthesis-action-error" class="w-full"></div>
       </div>
 
     </div>
@@ -266,6 +423,7 @@
 
   </div>
 </div>
+
 
 <script>
   let activeSkill = 'google-xyz';
@@ -333,30 +491,420 @@
     if (chatSkillInput) { chatSkillInput.value = slug; }
   }
 
-  function triggerResumeSynthesis() {
-    var jobDesc = document.getElementById('job-description-input').value.trim();
+  let activeLanguage = 'pt-BR';
+
+  function selectLanguage(lang) {
+    activeLanguage = lang;
+    var cards = document.querySelectorAll('.lang-card');
+    cards.forEach(function(card) {
+      card.classList.remove('border-indigo-600', 'bg-indigo-50/50', 'dark:bg-indigo-950/30', 'dark:border-indigo-500');
+      card.classList.add('border-slate-200', 'dark:border-slate-800');
+    });
+    var activeCard = document.getElementById('lang-card-' + lang);
+    if (activeCard) {
+      activeCard.classList.remove('border-slate-200', 'dark:border-slate-800');
+      activeCard.classList.add('border-indigo-600', 'bg-indigo-50/50', 'dark:bg-indigo-950/30', 'dark:border-indigo-500');
+    }
+  }
+
+  async function updateGenerateModel(val) {
+    var spinner = document.getElementById('generate-model-spinner');
+    var status = document.getElementById('generate-model-status');
+    if (spinner) spinner.classList.remove('hidden');
+    if (status) status.classList.add('hidden');
+
+    try {
+      var formData = new FormData();
+      formData.append('model_choice', val);
+
+      var res = await fetch('/settings/quick-model', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+      });
+
+      if (res.ok) {
+        if (status) {
+          status.classList.remove('hidden');
+          setTimeout(function() { status.classList.add('hidden'); }, 2000);
+        }
+        var actionError = document.getElementById('synthesis-action-error');
+        if (actionError) actionError.innerHTML = '';
+      }
+    } catch (e) {
+      console.warn('Falha ao atualizar modelo padrão:', e);
+    } finally {
+      if (spinner) spinner.classList.add('hidden');
+    }
+  }
+
+  // =========================================================================
+  // ALERTA SONORO DE SUCESSO (WEB AUDIO API NATIVA)
+  // =========================================================================
+  function playSuccessSound() {
+    try {
+      var AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      var ctx = new AudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      var now = ctx.currentTime;
+      // Arpeggio harmônico ascendente (C5 -> E5 -> G5) suave de confirmação e sucesso
+      var notes = [
+        { freq: 523.25, start: 0, duration: 0.14 },    // C5
+        { freq: 659.25, start: 0.12, duration: 0.14 }, // E5
+        { freq: 783.99, start: 0.24, duration: 0.38 }  // G5
+      ];
+
+      notes.forEach(function(n) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(n.freq, now + n.start);
+
+        gain.gain.setValueAtTime(0.001, now + n.start);
+        gain.gain.exponentialRampToValueAtTime(0.28, now + n.start + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.start + n.duration);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + n.start);
+        osc.stop(now + n.start + n.duration);
+      });
+    } catch (e) {
+      console.warn('Alerta sonoro de sucesso não pôde ser reproduzido:', e);
+    }
+  }
+
+  // =========================================================================
+  // SISTEMA DE RETENTATIVA A CADA 1 MINUTO (RESILIÊNCIA CONTRA FALHAS)
+  // =========================================================================
+  let autoRetryCountdownInterval = null;
+  let autoRetrySecondsLeft = 60; // 1 minuto = 60 segundos
+  let autoRetryAttempts = 0;
+  let isAutoRetryActive = false;
+
+  function renderAutoRetryControls(isScheduled) {
+    var container = document.getElementById('auto-retry-panel-container');
+    if (!container) return;
+
+    if (!isScheduled) {
+      container.innerHTML = `
+        <div class="mt-3 pt-3 border-t border-rose-200/80 dark:border-rose-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div class="text-[11px] text-rose-700 dark:text-rose-300">
+            Deseja que o sistema tente gerar novamente a cada 1 minuto automaticamente?
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button type="button" 
+                    id="btn-auto-retry-1min"
+                    onclick="startAutoRetry1Min()" 
+                    class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                    aria-label="Ativar retentativa a cada 1 minuto">
+              <span>🔄 Retentar a cada 1 min</span>
+            </button>
+            <button type="button" 
+                    onclick="retryNowImmediately()" 
+                    class="px-3 py-1.5 rounded-lg border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-slate-800 text-rose-800 dark:text-rose-200 font-semibold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                    aria-label="Tentar gerar novamente agora">
+              <span>⚡ Tentar agora</span>
+            </button>
+          </div>
+        </div>
+      `;
+    } else {
+      var m = Math.floor(autoRetrySecondsLeft / 60);
+      var s = autoRetrySecondsLeft % 60;
+      var timeFormatted = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+
+      container.innerHTML = `
+        <div class="mt-3 p-3 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-indigo-900 dark:text-indigo-200 animate-in fade-in"
+             role="status" aria-live="polite">
+          <div class="flex items-center gap-2">
+            <span class="animate-spin text-sm">⏳</span>
+            <div>
+              <div class="font-bold flex items-center gap-1.5">
+                <span>Retentativa periódica ativada (1 min)</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-indigo-200/60 dark:bg-indigo-900/60 font-mono">
+                  Tentativa ${autoRetryAttempts + 1}
+                </span>
+              </div>
+              <div class="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
+                Próxima tentativa em: <span id="auto-retry-countdown" class="font-bold font-mono text-sm text-indigo-600 dark:text-indigo-400">${timeFormatted}</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button type="button" 
+                    onclick="cancelAutoRetry()" 
+                    class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs transition-colors cursor-pointer"
+                    aria-label="Cancelar retentativa automática">
+              ⏹️ Cancelar retentativa
+            </button>
+            <button type="button" 
+                    onclick="retryNowImmediately()" 
+                    class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                    aria-label="Tentar gerar imediatamente sem esperar o tempo restante">
+              ⚡ Tentar agora
+            </button>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  function startAutoRetry1Min() {
+    isAutoRetryActive = true;
+    autoRetrySecondsLeft = 60;
+    renderAutoRetryControls(true);
+
+    if (autoRetryCountdownInterval) clearInterval(autoRetryCountdownInterval);
+    autoRetryCountdownInterval = setInterval(function() {
+      if (autoRetrySecondsLeft > 0) {
+        autoRetrySecondsLeft--;
+        var cd = document.getElementById('auto-retry-countdown');
+        if (cd) {
+          var m = Math.floor(autoRetrySecondsLeft / 60);
+          var s = autoRetrySecondsLeft % 60;
+          cd.innerText = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
+      } else {
+        clearInterval(autoRetryCountdownInterval);
+        autoRetryAttempts++;
+        triggerResumeSynthesis(true);
+      }
+    }, 1000);
+  }
+
+  function cancelAutoRetry() {
+    isAutoRetryActive = false;
+    if (autoRetryCountdownInterval) {
+      clearInterval(autoRetryCountdownInterval);
+      autoRetryCountdownInterval = null;
+    }
+    autoRetrySecondsLeft = 60;
+    renderAutoRetryControls(false);
+  }
+
+  function retryNowImmediately() {
+    if (autoRetryCountdownInterval) {
+      clearInterval(autoRetryCountdownInterval);
+      autoRetryCountdownInterval = null;
+    }
+    autoRetryAttempts++;
+    triggerResumeSynthesis(isAutoRetryActive);
+  }
+
+  function dismissActionError() {
+    cancelAutoRetry();
+    var err = document.getElementById('synthesis-action-error');
+    if (err) err.innerHTML = '';
+  }
+
+  // =========================================================================
+  // SISTEMA DE CONTAGEM REGRESSIVA DO RESET DE TOKENS (00:00 UTC)
+  // =========================================================================
+  let tokenResetSeconds = 0;
+  let tokenResetInterval = null;
+
+  function initTokenResetCountdown() {
+    var el = document.getElementById('token-reset-countdown');
+    if (!el) return;
+    var rawSeconds = parseInt(el.dataset.seconds || '0', 10);
+    if (rawSeconds > 0) {
+      tokenResetSeconds = rawSeconds;
+    }
+
+    if (tokenResetInterval) clearInterval(tokenResetInterval);
+    tokenResetInterval = setInterval(function() {
+      if (tokenResetSeconds > 0) {
+        tokenResetSeconds--;
+        var h = Math.floor(tokenResetSeconds / 3600);
+        var m = Math.floor((tokenResetSeconds % 3600) / 60);
+        var countdownEl = document.getElementById('token-reset-countdown');
+        if (countdownEl) {
+          countdownEl.innerText = h + 'h ' + String(m).padStart(2, '0') + 'm (00:00 UTC)';
+        }
+      } else {
+        clearInterval(tokenResetInterval);
+        refreshTokenUsage();
+      }
+    }, 1000);
+  }
+
+  async function refreshTokenUsage() {
+    try {
+      var res = await fetch('/settings/tokens');
+      if (res.ok) {
+        var data = await res.json();
+        var spentEl = document.getElementById('token-spent-display');
+        var percentEl = document.getElementById('token-percent-display');
+        var resetEl = document.getElementById('token-reset-countdown');
+        if (spentEl && data.formatted_tokens_today && data.formatted_tokens_limit_daily) {
+          spentEl.innerText = data.formatted_tokens_today + ' / ' + data.formatted_tokens_limit_daily;
+        }
+        if (percentEl && data.tokens_percent_used !== undefined) {
+          percentEl.innerText = '(' + data.tokens_percent_used + '% da cota diária)';
+        }
+        if (resetEl && data.seconds_until_reset) {
+          tokenResetSeconds = data.seconds_until_reset;
+          resetEl.dataset.seconds = data.seconds_until_reset;
+          resetEl.innerText = data.formatted_time_until_reset + ' (00:00 UTC)';
+          initTokenResetCountdown();
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao atualizar telemetria de tokens:', e);
+    }
+  }
+
+  async function triggerResumeSynthesis(isAutoRetry = false) {
+    var jobInput = document.getElementById('job-description-input');
+    var jobDesc = (jobInput ? jobInput.value : '').trim();
+    var actionError = document.getElementById('synthesis-action-error');
+    var clientError = document.getElementById('synthesis-client-error');
+
+    if (!isAutoRetry && actionError) actionError.innerHTML = '';
+    if (clientError) clientError.classList.add('hidden');
+
     if (!jobDesc) {
-      alert('Por favor, informe a descrição da vaga antes de solicitar a síntese.');
+      if (actionError) {
+        actionError.innerHTML = `
+          <div class="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs flex items-center justify-between gap-3 animate-in fade-in">
+            <div class="flex items-center gap-2">
+              <span>⚠️</span>
+              <span>Por favor, informe ou extraia a descrição da vaga antes de gerar o currículo.</span>
+            </div>
+            <button type="button" onclick="this.closest('.p-3.5').remove()" class="text-amber-600 dark:text-amber-400 font-bold cursor-pointer">&times;</button>
+          </div>
+        `;
+      }
+      if (jobInput) {
+        jobInput.focus();
+        jobInput.classList.add('ring-2', 'ring-amber-500', 'border-amber-500');
+      }
       return;
     }
-    // Dispara a síntese do currículo via POST para criar ou redirecionar
-    var form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '/resumes/generate-custom';
-    var inputDesc = document.createElement('input');
-    inputDesc.type = 'hidden';
-    inputDesc.name = 'job_description';
-    inputDesc.value = jobDesc;
-    form.appendChild(inputDesc);
 
-    var inputSkill = document.createElement('input');
-    inputSkill.type = 'hidden';
-    inputSkill.name = 'prompt_skill_slug';
-    inputSkill.value = activeSkill;
-    form.appendChild(inputSkill);
+    var btn = document.getElementById('btn-generate-resume');
+    var btnText = document.getElementById('btn-generate-text');
+    var btnIcon = document.getElementById('btn-generate-icon');
+    var btnSpinner = document.getElementById('btn-generate-spinner');
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('opacity-75', 'cursor-not-allowed');
+      if (btnText) {
+        btnText.innerText = isAutoRetry ? `Sintetizando com IA... (Tentativa ${autoRetryAttempts + 1})` : 'Sintetizando com IA...';
+      }
+      if (btnIcon) btnIcon.classList.add('hidden');
+      if (btnSpinner) btnSpinner.classList.remove('hidden');
+    }
 
-    document.body.appendChild(form);
-    form.submit();
+    try {
+      var modelSelect = document.getElementById('generate-gemini-model');
+      var modelChoice = modelSelect ? modelSelect.value : 'gemini-3.8-flash:medium';
+
+      var formData = new FormData();
+      formData.append('job_description', jobDesc);
+      formData.append('prompt_skill_slug', activeSkill);
+      formData.append('language', activeLanguage);
+      formData.append('model_choice', modelChoice);
+
+      var response = await fetch('/resumes/generate-custom', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+      });
+
+      var data = await response.json();
+      if (response.ok && data.status === 'ok') {
+        cancelAutoRetry();
+        // Emite alerta sonoro de sucesso!
+        playSuccessSound();
+        if (btnText) btnText.innerText = '✅ Currículo Gerado com Sucesso!';
+        setTimeout(function() {
+          window.location.href = data.redirect_url;
+        }, 600);
+      } else {
+        var msg = data.message || 'Ocorreu um erro ao gerar o currículo. Tente novamente.';
+        var isModelError = msg.toLowerCase().includes('modelo') || msg.toLowerCase().includes('indisponível') || response.status === 503;
+
+        if (actionError) {
+          actionError.innerHTML = `
+            <div class="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 shadow-xs animate-in fade-in text-xs">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex items-start gap-2.5">
+                  <span class="text-base mt-0.5">⚠️</span>
+                  <div class="space-y-1.5">
+                    <div class="font-bold text-xs text-rose-900 dark:text-rose-100">Não foi possível gerar o currículo</div>
+                    <div class="text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">${msg}</div>
+                    ${isModelError ? `
+                      <div class="pt-1 text-[11px] text-amber-700 dark:text-amber-300 font-medium">
+                        💡 <strong>Dica:</strong> Se o modelo estiver instável ou indisponível, experimente selecionar o <strong>Gemini 3.6 Flash</strong> no dropdown ao lado e tente novamente.
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+                <button type="button" onclick="dismissActionError()" class="text-rose-400 hover:text-rose-600 dark:hover:text-rose-200 font-bold text-base cursor-pointer p-1" title="Fechar aviso">&times;</button>
+              </div>
+              <div id="auto-retry-panel-container"></div>
+            </div>
+          `;
+
+          if (isAutoRetryActive) {
+            startAutoRetry1Min();
+          } else {
+            renderAutoRetryControls(false);
+          }
+        }
+      }
+    } catch (err) {
+      if (actionError) {
+        actionError.innerHTML = `
+          <div class="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 shadow-xs animate-in fade-in text-xs">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start gap-2.5">
+                <span class="text-base mt-0.5">⚠️</span>
+                <div class="space-y-1">
+                  <div class="font-bold text-xs text-rose-900 dark:text-rose-100">Falha de Conexão</div>
+                  <div class="text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.</div>
+                </div>
+              </div>
+              <button type="button" onclick="dismissActionError()" class="text-rose-400 hover:text-rose-600 dark:hover:text-rose-200 font-bold text-base cursor-pointer p-1" title="Fechar aviso">&times;</button>
+            </div>
+            <div id="auto-retry-panel-container"></div>
+          </div>
+        `;
+
+        if (isAutoRetryActive) {
+          startAutoRetry1Min();
+        } else {
+          renderAutoRetryControls(false);
+        }
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        if (btnText) btnText.innerText = '✨ Gerar Currículo Sob Medida';
+        if (btnIcon) btnIcon.classList.remove('hidden');
+        if (btnSpinner) btnSpinner.classList.add('hidden');
+      }
+    }
   }
+
+  // Inicializa o contador do reset de tokens ao carregar a página
+  document.addEventListener('DOMContentLoaded', function() {
+    initTokenResetCountdown();
+  });
 </script>
 {% endblock %}

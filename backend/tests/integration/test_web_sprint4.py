@@ -7,13 +7,24 @@ e eliminação definitiva de contas com barreira fail-closed de autenticação.
 
 import json
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException, Request
 from httpx import AsyncClient
 
+from app.api.web import _extract_updated_resume_content, google_callback
 from app.core.crypto import crypto_service
-from app.domain.models import User, UserSettings
+from app.domain.models import (
+    Application,
+    GeneratedResume,
+    PromptSkill,
+    User,
+    UserSettings,
+)
+from app.ports.ai_port import ModelUnavailableError
+from app.services.auth_service import AuthService
 
 MOCK_USER_ID = uuid.uuid4()
 MOCK_WEB_USER = User(
@@ -454,7 +465,7 @@ async def test_settings_test_gemini_key_failure(async_client: AsyncClient) -> No
         )
         assert res.status_code == 200
         assert "Falha ao validar a chave com o Google AI Studio" in res.text
-        assert "API_KEY_INVALID" in res.text
+        assert "API_KEY_INVALID" not in res.text
 
 
 @pytest.mark.asyncio
@@ -776,3 +787,718 @@ async def test_settings_delete_account_lgpd_erasure(async_client: AsyncClient) -
         assert res.status_code == 200
         assert res.headers.get("hx-redirect") == "/?msg=account_deleted"
         mock_delete.assert_awaited_once_with(MOCK_WEB_USER)
+
+
+@pytest.mark.asyncio
+async def test_guardrail_settings_quick_model_unauthenticated_returns_401(
+    async_client: AsyncClient,
+) -> None:
+    """
+    VETOR DE AMEAÇA: CWE-306 (Missing Authentication for Critical Function).
+    Tentativa de modificação de parâmetros de IA e nível de raciocínio sem credenciais autenticadas.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A rota POST /settings/quick-model DEVE rejeitar requisições sem cookie de sessão com HTTP 401 e payload JSON.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Qualquer tentativa de relaxar a autenticação nesta rota abriria vetores de manipulação não autorizada de configurações.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    Acesso anônimo a POST /settings/quick-model responde obrigatoriamente com status 401 e status="error".
+    """
+    res = await async_client.post(
+        "/settings/quick-model",
+        data={"model_choice": "gemini-3.8-flash:low"},
+    )
+    assert res.status_code == 401
+    data = res.json()
+    assert data["status"] == "error"
+    assert "Autenticação necessária" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_settings_quick_model_creates_settings_success(
+    async_client: AsyncClient,
+) -> None:
+    """Valida criação e persistência das configurações de modelo rápido."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_db_settings = MagicMock()
+    mock_db_settings.scalar_one_or_none.return_value = None
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_settings,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.add") as mock_add,
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock) as mock_commit,
+    ):
+        res = await async_client.post(
+            "/settings/quick-model",
+            data={"model_choice": "gemini-3.8-flash:high"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["model"] == "gemini-3.8-flash"
+        assert data["thinking_level"] == "high"
+        mock_add.assert_called_once()
+        mock_commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_settings_quick_model_updates_existing_settings_success(
+    async_client: AsyncClient,
+) -> None:
+    """Valida atualização de modelo e thinking_level para configurações existentes."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    existing_settings = UserSettings(
+        user_id=MOCK_USER_ID,
+        gemini_model="gemini-3.7-flash",
+        gemini_thinking_level="medium",
+    )
+    mock_db_settings = MagicMock()
+    mock_db_settings.scalar_one_or_none.return_value = existing_settings
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_settings,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock) as mock_commit,
+    ):
+        res = await async_client.post(
+            "/settings/quick-model",
+            data={"model_choice": "gemini-3.8-flash:low"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["model"] == "gemini-3.8-flash"
+        assert data["thinking_level"] == "low"
+        assert existing_settings.gemini_model == "gemini-3.8-flash"
+        assert existing_settings.gemini_thinking_level == "low"
+        mock_commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_settings_quick_model_defaults_thinking_level(
+    async_client: AsyncClient,
+) -> None:
+    """Valida que ausência ou valor inválido de thinking_level assume 'medium'."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    existing_settings = UserSettings(
+        user_id=MOCK_USER_ID,
+        gemini_model="gemini-3.8-flash",
+        gemini_thinking_level="high",
+    )
+    mock_db_settings = MagicMock()
+    mock_db_settings.scalar_one_or_none.return_value = existing_settings
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_db_settings,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock),
+    ):
+        res = await async_client.post(
+            "/settings/quick-model",
+            data={"model_choice": "gemini-3.7-flash:invalid"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["model"] == "gemini-3.7-flash"
+        assert data["thinking_level"] == "medium"
+        assert existing_settings.gemini_model == "gemini-3.7-flash"
+        assert existing_settings.gemini_thinking_level == "medium"
+
+
+@pytest.mark.asyncio
+async def test_guardrail_settings_tokens_unauthenticated_returns_401(
+    async_client: AsyncClient,
+) -> None:
+    """VETOR DE AMEAÇA: Acesso não autenticado a telemetria de consumo de tokens (CWE-306).
+    Um invasor não autenticado ou ator não autorizado poderia mapear a atividade de uso
+    de IA e scraping de quotas da plataforma.
+
+    COMPORTAMENTO ESPERADO (FAIL-CLOSED):
+    A rota GET /settings/tokens deve rejeitar estritamente qualquer requisição sem sessão
+    ativa com HTTP 401 Unauthorized e payload de erro em JSON.
+
+    RISCO DE REGRESSÃO SILENCIOSA (ALERTA PARA REFACTOR HUMANO E IA/LLM):
+    Se um desenvolvedor ou agente IA tornar o endpoint público ou afrouxar a dependência
+    get_authenticated_web_user para None opcional sem verificação, métricas sensíveis de
+    consumo vazariam publicamente.
+
+    PREMISSA DO GUARDRAIL (ORÁCULO ABSOLUTO):
+    A resposta sem cookie de sessão deve retornar impreterivelmente status_code == 401
+    com mensagem de erro clara.
+    """
+    res = await async_client.get("/settings/tokens")
+    assert res.status_code == 401
+    data = res.json()
+    assert data["status"] == "error"
+    assert "Autenticação necessária" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_settings_tokens_authenticated_success(
+    async_client: AsyncClient,
+) -> None:
+    """Valida retorno bem-sucedido de métricas de tokens para usuário autenticado."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_token_data = {
+        "tokens_used_today": 1200,
+        "requests_used_today": 3,
+        "tokens_used_total": 45000,
+        "formatted_tokens_today": "1.200",
+        "formatted_tokens_total": "45.000",
+    }
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.token_service.get_user_token_usage",
+            new_callable=AsyncMock,
+            return_value=mock_token_data,
+        ) as mock_get_tokens,
+    ):
+        res = await async_client.get("/settings/tokens")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["tokens_used_today"] == 1200
+        assert data["requests_used_today"] == 3
+        assert data["tokens_used_total"] == 45000
+        assert data["formatted_tokens_today"] == "1.200"
+        assert data["formatted_tokens_total"] == "45.000"
+        mock_get_tokens.assert_awaited_once()
+
+
+# ==============================================================================
+# TESTES DE COBERTURA INTEGRAL DO WEB ROUTER (SPRINT 4 EXTENSION)
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_welcome_page_authenticated_routing_with_and_without_dossier(
+    async_client: AsyncClient,
+) -> None:
+    """Valida redirecionamento inteligente do usuário autenticado na home page."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    # 1. Usuário autenticado COM dossiê cadastrado -> /applications
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.profile_service.ProfileService.has_dossier",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        res = await async_client.get("/", follow_redirects=False)
+        assert res.status_code == 302
+        assert res.headers["location"] == "/applications"
+
+    # 2. Usuário autenticado SEM dossiê cadastrado -> /profile
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.profile_service.ProfileService.has_dossier",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        res = await async_client.get("/", follow_redirects=False)
+        assert res.status_code == 302
+        assert res.headers["location"] == "/profile"
+
+
+@pytest.mark.asyncio
+async def test_web_logout_authenticated_revokes_session(async_client: AsyncClient) -> None:
+    """Valida revogação da sessão no servidor ao realizar logout autenticado."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.auth_service.AuthService.revoke_session",
+            new_callable=AsyncMock,
+        ) as mock_revoke,
+    ):
+        res = await async_client.post("/auth/logout")
+        assert res.status_code == 200
+        assert res.headers.get("HX-Refresh") == "true"
+        mock_revoke.assert_awaited_once_with(MOCK_WEB_USER)
+
+
+@pytest.mark.asyncio
+async def test_web_profile_page_access_unauthenticated_and_authenticated(
+    async_client: AsyncClient,
+) -> None:
+    """Valida acesso anônimo (redirect) e autenticado à página de dossiê profissional."""
+    # 1. Anônimo -> redirect
+    res_anon = await async_client.get("/profile", follow_redirects=False)
+    assert res_anon.status_code == 302
+    assert res_anon.headers["location"] == "/?auth_error=login_required"
+
+    # 2. Autenticado -> 200 OK com template renderizado
+    async_client.cookies.set("session_token", "valid_session_token")
+    mock_dossier = {
+        "experiences": [],
+        "educations": [],
+        "certifications": [],
+        "projects": [],
+        "skills": [],
+        "languages": [],
+    }
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.profile_service.ProfileService.get_full_dossier",
+            new_callable=AsyncMock,
+            return_value=mock_dossier,
+        ),
+    ):
+        res = await async_client.get("/profile")
+        assert res.status_code == 200
+        assert "Dossiê Profissional" in res.text or "Repositório" in res.text or "Carla" in res.text
+
+
+@pytest.mark.asyncio
+async def test_web_create_resume_page_authenticated_with_error(
+    async_client: AsyncClient,
+) -> None:
+    """Valida renderização de /resumes/new com usuário autenticado e mensagem de erro."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.prompt_skill_service.PromptSkillService.list_active_skills",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "app.services.token_service.get_user_token_usage",
+            new_callable=AsyncMock,
+            return_value={"tokens_used_today": 0},
+        ),
+    ):
+        res = await async_client.get("/resumes/new?error=Falha+de+teste")
+        assert res.status_code == 200
+        assert "Falha de teste" in res.text
+
+
+def test_web_extract_updated_resume_content_education_hyphen() -> None:
+    """Valida parsing de período educacional com hífen tradicional (BVA)."""
+    base_content = {"education": []}
+    form_data = {
+        "edu_0_degree": "BSc Engenharia",
+        "edu_0_institution": "UFMG",
+        "edu_0_field": "Computação",
+        "edu_0_period": "2018 - 2022",
+        "edu_1_degree": "MSc Inteligência Artificial",
+        "edu_1_institution": "USP",
+        "edu_1_field": "IA",
+        "edu_1_period": "2023-",
+    }
+    updated = _extract_updated_resume_content(base_content, form_data)
+    edus = updated["education"]
+    assert len(edus) == 2
+    assert edus[0]["start_date"] == "2018"
+    assert edus[0]["end_date"] == "2022"
+    assert edus[1]["start_date"] == "2023"
+    assert edus[1]["end_date"] == ""
+
+
+@pytest.mark.asyncio
+async def test_web_preview_resume_page_with_application_notes_and_skill(
+    async_client: AsyncClient,
+) -> None:
+    """Valida renderização do preview com notas do Copilot (prefixadas) e PromptSkill."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    resume_id = uuid.uuid4()
+    app_id = uuid.uuid4()
+    skill_id = uuid.uuid4()
+
+    mock_resume = MagicMock(spec=GeneratedResume)
+    mock_resume.id = resume_id
+    mock_resume.user_id = MOCK_USER_ID
+    mock_resume.application_id = app_id
+    mock_resume.prompt_skill_id = skill_id
+    mock_resume.structured_content = {"header": {"target_title": "Security Lead"}}
+    mock_resume.match_percentage = 85
+    mock_resume.version_number = 1
+    mock_resume.status = "draft"
+
+    mock_application = MagicMock(spec=Application)
+    mock_application.id = app_id
+    mock_application.notes = []
+
+    mock_skill = MagicMock(spec=PromptSkill)
+    mock_skill.id = skill_id
+    mock_skill.slug = "specialist-slug"
+
+    notes = [
+        MagicMock(content="👤 Candidato: Gostaria de enfatizar criptografia."),
+        MagicMock(content="🤖 Copilot IA: Destaquei os projetos com AES-GCM."),
+        MagicMock(content="🤖 Copilot: Atualização aplicada com sucesso."),
+        MagicMock(content="Nota sem prefixo conhecido."),
+    ]
+
+    mock_resume_result = MagicMock()
+    mock_resume_result.scalar_one_or_none.return_value = mock_resume
+
+    mock_app_result = MagicMock()
+    mock_app_result.scalar_one_or_none.return_value = mock_application
+
+    mock_notes_result = MagicMock()
+    mock_notes_result.scalars.return_value.all.return_value = notes
+
+    mock_skill_result = MagicMock()
+    mock_skill_result.scalar_one_or_none.return_value = mock_skill
+
+    async def mock_execute(stmt: Any, *args: Any, **kwargs: Any) -> Any:
+        stmt_str = str(stmt)
+        if "FROM generated_resumes" in stmt_str:
+            return mock_resume_result
+        if "FROM applications" in stmt_str:
+            return mock_app_result
+        if "FROM application_notes" in stmt_str:
+            return mock_notes_result
+        if "FROM prompt_skills" in stmt_str:
+            return mock_skill_result
+        return mock_resume_result
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            side_effect=mock_execute,
+        ),
+        patch(
+            "app.services.profile_service.ProfileService.get_full_dossier",
+            new_callable=AsyncMock,
+            return_value={"experiences": []},
+        ),
+    ):
+        res = await async_client.get(f"/resumes/{resume_id}/preview")
+        assert res.status_code == 200
+        assert "specialist-slug" in res.text or "Security Lead" in res.text
+
+
+@pytest.mark.asyncio
+async def test_web_regenerate_from_chat_variations(
+    async_client: AsyncClient,
+) -> None:
+    """Valida ramificações de erro e redirecionamento de regeração de currículo via chat."""
+    async_client.cookies.set("session_token", "valid_session_token")
+    resume_id = uuid.uuid4()
+
+    # 1. history_json inválido + chat vazio + currículo não encontrado -> 404
+    mock_empty_res = MagicMock()
+    mock_empty_res.scalar_one_or_none.return_value = None
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_empty_res,
+        ),
+    ):
+        res_404 = await async_client.post(
+            f"/resumes/{resume_id}/regenerate-from-chat",
+            data={"history_json": "invalid-json-structure", "prompt_skill_slug": "google-xyz"},
+        )
+        assert res_404.status_code == 404
+        assert "não encontrado" in res_404.text
+
+    valid_history = json.dumps([{"role": "user", "content": "Adicione certificação CISSP"}])
+
+    # 2. resume_service levanta HTTPException -> repassa a exceção (ex: 400)
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.regenerate_resume_from_chat",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(status_code=400, detail="Erro de validação"),
+        ),
+    ):
+        res_http_err = await async_client.post(
+            f"/resumes/{resume_id}/regenerate-from-chat",
+            data={"history_json": valid_history, "prompt_skill_slug": "google-xyz"},
+        )
+        assert res_http_err.status_code == 400
+        assert "Erro de validação" in res_http_err.text
+
+    # 3. resume_service levanta exceção inesperada -> 500 com template
+    app_id = uuid.uuid4()
+    mock_resume = MagicMock(spec=GeneratedResume)
+    mock_resume.id = resume_id
+    mock_resume.user_id = MOCK_USER_ID
+    mock_resume.application_id = app_id
+    mock_resume_found = MagicMock()
+    mock_resume_found.scalar_one_or_none.return_value = mock_resume
+
+    mock_app_found = MagicMock()
+    mock_app_found.scalar_one_or_none.return_value = MagicMock(spec=Application, id=app_id)
+
+    async def mock_exec_500(stmt: Any, *args: Any, **kwargs: Any) -> Any:
+        if "FROM generated_resumes" in str(stmt):
+            return mock_resume_found
+        return mock_app_found
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.regenerate_resume_from_chat",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("Falha de infraestrutura no cluster LLM"),
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            side_effect=mock_exec_500,
+        ),
+    ):
+        res_500 = await async_client.post(
+            f"/resumes/{resume_id}/regenerate-from-chat",
+            data={"history_json": valid_history, "prompt_skill_slug": "google-xyz"},
+        )
+        assert res_500.status_code == 500
+        assert "Falha na regeração da versão" in res_500.text
+
+    # 4. Sucesso sem header HX-Request -> 303 See Other
+    new_version_id = uuid.uuid4()
+    mock_new_res = MagicMock()
+    mock_new_res.resume_id = new_version_id
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.services.resume_service.ResumeService.regenerate_resume_from_chat",
+            new_callable=AsyncMock,
+            return_value=mock_new_res,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock),
+    ):
+        res_303 = await async_client.post(
+            f"/resumes/{resume_id}/regenerate-from-chat",
+            data={"history_json": valid_history, "prompt_skill_slug": "google-xyz"},
+            follow_redirects=False,
+        )
+        assert res_303.status_code == 303
+        assert res_303.headers["location"] == f"/resumes/{new_version_id}?tab=editor"
+
+
+@pytest.mark.asyncio
+async def test_web_settings_variations(async_client: AsyncClient) -> None:
+    """Valida validações e normalizações de modelos e níveis de pensamento em POST /settings."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    # 1. Chave vazia sem chave cadastrada -> 400 Bad Request
+    mock_none_settings = MagicMock()
+    mock_none_settings.scalar_one_or_none.return_value = None
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_none_settings,
+        ),
+    ):
+        res_blank = await async_client.post(
+            "/settings/gemini-key",
+            data={"gemini_api_key": ""},
+        )
+        assert res_blank.status_code == 400
+        assert "A chave de API não pode estar em branco" in res_blank.text
+
+    # 2. Modelo legado gemini-2.5-flash e thinking level inválido normalizados para 3.8-flash e medium
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_none_settings,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.add") as mock_db_add,
+    ):
+        res_norm = await async_client.post(
+            "/settings/gemini-key",
+            data={
+                "gemini_api_key": "AIzaSyTestNewValidKey123",
+                "gemini_model": "gemini-2.5-flash",
+                "gemini_thinking_level": "extreme_hyper",
+            },
+        )
+        assert res_norm.status_code == 200
+        assert "salva e cifrada com sucesso" in res_norm.text
+        added_obj = mock_db_add.call_args[0][0]
+        assert added_obj.gemini_model == "gemini-3.8-flash"
+        assert added_obj.gemini_thinking_level == "medium"
+
+    # 3. Chave vazia com chave existente no banco -> preserva chave existente (linhas 1977-1978)
+    mock_existing_settings = MagicMock()
+    existing_user_settings = UserSettings(
+        id=uuid.uuid4(),
+        user_id=MOCK_USER_ID,
+        encrypted_gemini_api_key="existing_enc_key",
+        gemini_model="gemini-3.8-flash",
+        gemini_thinking_level="medium",
+    )
+    mock_existing_settings.scalar_one_or_none.return_value = existing_user_settings
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new_callable=AsyncMock,
+            return_value=mock_existing_settings,
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new_callable=AsyncMock),
+    ):
+        res_preserve = await async_client.post(
+            "/settings/gemini-key",
+            data={
+                "gemini_api_key": "",
+                "gemini_model": "gemini-2.5-pro",
+                "gemini_thinking_level": "high",
+            },
+        )
+        assert res_preserve.status_code == 200
+        assert "salva e cifrada com sucesso" in res_preserve.text
+        assert existing_user_settings.encrypted_gemini_api_key == "existing_enc_key"
+        assert existing_user_settings.gemini_model == "gemini-3.8-flash"
+        assert existing_user_settings.gemini_thinking_level == "high"
+
+
+@pytest.mark.asyncio
+async def test_web_settings_gemini_key_test_model_unavailable(
+    async_client: AsyncClient,
+) -> None:
+    """Valida resposta com alerta amber quando o teste de chave falha por indisponibilidade."""
+    async_client.cookies.set("session_token", "valid_session_token")
+
+    with (
+        patch(
+            "app.services.auth_service.AuthService.get_authenticated_user",
+            new_callable=AsyncMock,
+            return_value=MOCK_WEB_USER,
+        ),
+        patch(
+            "app.adapters.gemini_ai_adapter.GeminiAIAdapter.analyze_job",
+            new_callable=AsyncMock,
+            side_effect=ModelUnavailableError(
+                "Esse modelo está temporariamente indisponível.", model="gemini-3.8-flash"
+            ),
+        ),
+    ):
+        res = await async_client.post(
+            "/settings/gemini-key/test",
+            data={"gemini_api_key": "AIzaSyTestKey123456789"},
+        )
+        assert res.status_code == 200
+        assert "Esse modelo está temporariamente indisponível" in res.text
+        assert "bg-amber-50" in res.text
+
+
+@pytest.mark.asyncio
+async def test_google_callback_with_profile_service_has_dossier() -> None:
+    """Valida google_callback com profile_service determinando destino /applications."""
+    auth_service_mock = MagicMock(spec=AuthService)
+    user_mock = User(id=uuid.uuid4(), email="test@google.com")
+    auth_service_mock.authenticate_oauth_user = AsyncMock(
+        return_value=(user_mock, "jwt_token_google")
+    )
+    profile_mock = AsyncMock()
+    profile_mock.has_dossier = AsyncMock(return_value=True)
+
+    req = MagicMock(spec=Request)
+    req.cookies = {"oauth_state": "direct_state_123"}
+    resp = await google_callback(
+        request=req,
+        code="valid_code",
+        state="direct_state_123",
+        auth_service=auth_service_mock,
+        profile_service=profile_mock,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/applications"

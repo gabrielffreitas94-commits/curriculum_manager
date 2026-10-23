@@ -11,7 +11,7 @@
    - Suporte a multi-idiomas nativo (`pt-BR`, `pt-PT`, `en-US`, `en-GB`, `es-ES`) e formatação uniforme de datas (mês/ano).
 
 2. **Motor de IA & Pipeline Anti-Alucinação (Grounding Audit)**:
-   - Integração com Google Gemini (`gemini-2.5-flash`) via SDK `google-genai` com Structured Outputs.
+   - Integração com Google Gemini (`gemini-3.8-flash`) via SDK `google-genai` com Structured Outputs e fallback multi-modelo resiliente.
    - Auditoria estrita em 4 estágios: validação de entidades, cálculo de score de confiança (Grounding Trust Score), identificação de termos não fundamentados e auto-poda (*auto-pruning*).
    - Zero invenções: garantia matemática de que métricas, empresas ou cargos não existentes no dossiê jamais serão inseridos.
 

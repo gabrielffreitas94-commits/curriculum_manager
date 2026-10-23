@@ -10,13 +10,37 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = "Stop"
 
-$projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ((Split-Path -Leaf $scriptDir) -eq "backend") {
+    $projectRoot = Split-Path -Parent $scriptDir
+} elseif (Test-Path "$scriptDir/backend") {
+    $projectRoot = $scriptDir
+} elseif ((Split-Path -Leaf (Get-Location)) -eq "backend") {
+    $projectRoot = Split-Path -Parent (Get-Location)
+} else {
+    $projectRoot = $scriptDir
+}
+
 Set-Location $projectRoot
 
 Write-Host "====================================================================" -ForegroundColor Cyan
 Write-Host "  [ThothCVs AI] Inicialização Unificada do Sistema" -ForegroundColor Cyan
 Write-Host "====================================================================" -ForegroundColor Cyan
 Write-Host ""
+
+# 0. Liberar porta 8000 caso haja processo zumbi anterior
+try {
+    $conn = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue
+    if ($conn) {
+        Write-Host "[0/3] Liberando porta 8000 ocupada por processo anterior..." -ForegroundColor DarkGray
+        foreach ($c in $conn) {
+            Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 500
+    }
+} catch {
+    # Ignora se não houver permissão ou conexões
+}
 
 # 1. Compilar Tailwind CSS
 Write-Host "[1/3] Compilando estilos Tailwind CSS..." -ForegroundColor Yellow

@@ -1,27 +1,27 @@
-<!-- Modal Acessível de Revisão da Extração de Currículo (Zero Alucinação) -->
+<!-- Modal Acessível de Revisão da Extração de Currículo (Estilo Centralizado e Zero Alucinação) -->
 <div 
     id="import-review-modal-backdrop" 
-    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+    class="app-modal-backdrop"
     role="dialog"
     aria-modal="true"
     aria-labelledby="import-modal-title"
     tabindex="-1">
     
-    <div class="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+    <div class="app-modal-dialog max-w-2xl">
         
         <!-- Cabeçalho do Modal -->
-        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <span class="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+        <div class="app-modal-header">
+            <div class="flex items-center gap-2.5">
+                <span class="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </span>
                 <div>
-                    <h3 id="import-modal-title" class="text-base font-bold text-slate-900 dark:text-slate-100">
+                    <h3 id="import-modal-title" class="app-modal-title">
                         Currículo Analisado com Sucesso
                     </h3>
-                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                    <p class="app-modal-subtitle">
                         Fidelidade factual: 100% dos dados foram extraídos exclusivamente do seu documento.
                     </p>
                 </div>
@@ -31,7 +31,7 @@
                 type="button" 
                 onclick="closeModal()" 
                 aria-label="Fechar modal de revisão"
-                class="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                class="app-modal-close-btn">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -39,34 +39,34 @@
         </div>
 
         <!-- Conteúdo do Modal (Scrollável) -->
-        <div class="p-6 overflow-y-auto space-y-6 text-sm">
+        <div class="app-modal-body space-y-5">
             
-            <!-- Resumo dos Dados Pessoais Extraídos -->
+            <!-- Resumo dos Dados Pessoais Extraídos (Card Centralizado) -->
             {% if parsed_dto.personal_data %}
-            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800">
-                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+            <div class="app-modal-card space-y-2.5">
+                <h4 class="app-modal-subtitle font-bold uppercase tracking-wider">
                     Identificação & Contato
                 </h4>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div>
-                        <span class="text-slate-500">Nome:</span>
-                        <strong class="text-slate-900 dark:text-slate-100 ml-1">{{ parsed_dto.personal_data.full_name or "Não especificado" }}</strong>
+                        <span class="app-modal-label">Nome:</span>
+                        <strong class="app-modal-value ml-1">{{ parsed_dto.personal_data.full_name or "Não especificado" }}</strong>
                     </div>
                     <div>
-                        <span class="text-slate-500">Título/Cargo:</span>
-                        <strong class="text-slate-900 dark:text-slate-100 ml-1">{{ parsed_dto.personal_data.headline or "Não especificado" }}</strong>
+                        <span class="app-modal-label">Título/Cargo:</span>
+                        <strong class="app-modal-value ml-1">{{ parsed_dto.personal_data.headline or "Não especificado" }}</strong>
                     </div>
                     <div>
-                        <span class="text-slate-500">Telefone:</span>
-                        <span class="text-slate-700 dark:text-slate-300 ml-1">{{ parsed_dto.personal_data.phone or "—" }}</span>
+                        <span class="app-modal-label">Telefone:</span>
+                        <span class="app-modal-text ml-1 font-medium">{{ parsed_dto.personal_data.phone or "—" }}</span>
                     </div>
                     <div>
-                        <span class="text-slate-500">Localização:</span>
-                        <span class="text-slate-700 dark:text-slate-300 ml-1">{{ parsed_dto.personal_data.location or "—" }}</span>
+                        <span class="app-modal-label">Localização:</span>
+                        <span class="app-modal-text ml-1 font-medium">{{ parsed_dto.personal_data.location or "—" }}</span>
                     </div>
                     {% if parsed_dto.personal_data.linkedin_url %}
-                    <div class="col-span-2 truncate">
-                        <span class="text-slate-500">LinkedIn:</span>
+                    <div class="col-span-1 sm:col-span-2 truncate">
+                        <span class="app-modal-label">LinkedIn:</span>
                         <a href="{{ parsed_dto.personal_data.linkedin_url }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline ml-1">
                             {{ parsed_dto.personal_data.linkedin_url }}
                         </a>
@@ -76,54 +76,89 @@
             </div>
             {% endif %}
 
-            <!-- Resumo das Entidades Extraídas -->
+            <!-- Resumo das Entidades Extraídas (Subcards Centralizados) -->
             <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
-                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.experiences | length }}</span>
-                    <span class="text-[10px] text-slate-500">Experiências</span>
+                <div class="app-modal-subcard">
+                    <span class="block text-lg font-bold app-modal-value">{{ parsed_dto.experiences | length }}</span>
+                    <span class="text-[10px] app-modal-label font-medium">Experiências</span>
                 </div>
-                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.educations | length }}</span>
-                    <span class="text-[10px] text-slate-500">Formações</span>
+                <div class="app-modal-subcard">
+                    <span class="block text-lg font-bold app-modal-value">{{ parsed_dto.educations | length }}</span>
+                    <span class="text-[10px] app-modal-label font-medium">Formações</span>
                 </div>
-                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.skills | length }}</span>
-                    <span class="text-[10px] text-slate-500">Skills</span>
+                <div class="app-modal-subcard">
+                    <span class="block text-lg font-bold app-modal-value">{{ parsed_dto.skills | length }}</span>
+                    <span class="text-[10px] app-modal-label font-medium">Skills</span>
                 </div>
-                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.languages | length }}</span>
-                    <span class="text-[10px] text-slate-500">Idiomas</span>
+                <div class="app-modal-subcard">
+                    <span class="block text-lg font-bold app-modal-value">{{ parsed_dto.languages | length }}</span>
+                    <span class="text-[10px] app-modal-label font-medium">Idiomas</span>
                 </div>
-                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.certifications | length }}</span>
-                    <span class="text-[10px] text-slate-500">Certificações</span>
+                <div class="app-modal-subcard">
+                    <span class="block text-lg font-bold app-modal-value">{{ parsed_dto.certifications | length }}</span>
+                    <span class="text-[10px] app-modal-label font-medium">Certificações</span>
                 </div>
-                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <span class="block text-lg font-bold text-slate-900 dark:text-slate-100">{{ parsed_dto.projects | length }}</span>
-                    <span class="text-[10px] text-slate-500">Projetos</span>
+                <div class="app-modal-subcard">
+                    <span class="block text-lg font-bold app-modal-value">{{ parsed_dto.projects | length }}</span>
+                    <span class="text-[10px] app-modal-label font-medium">Projetos</span>
                 </div>
             </div>
 
             <!-- Lista de Experiências Encontradas -->
             {% if parsed_dto.experiences %}
-            <div>
-                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+            <div class="space-y-2.5">
+                <h4 class="app-modal-subtitle font-bold uppercase tracking-wider">
                     Experiências Identificadas
                 </h4>
-                <div class="space-y-2">
+                <div class="space-y-3">
                     {% for exp in parsed_dto.experiences %}
-                    <div class="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
-                        <div class="flex items-center justify-between">
-                            <span class="font-semibold text-slate-900 dark:text-slate-100">{{ exp.position_title }}</span>
-                            <span class="text-xs text-slate-500 font-mono">{{ exp.start_date }} → {{ exp.end_date or ("Atual" if exp.is_current else "—") }}</span>
+                    <div class="app-modal-card space-y-2">
+                        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-1">
+                            <div>
+                                <span class="app-modal-value text-sm">{{ exp.position_title }}</span>
+                                <div class="app-modal-text font-medium mt-0.5">
+                                    {{ exp.company_name }}{% if exp.location %} · <span class="app-modal-label font-normal">{{ exp.location }}</span>{% endif %}
+                                    {% if exp.work_model %}
+                                    <span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">{{ exp.work_model }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <span class="text-xs app-modal-label font-mono whitespace-nowrap">{{ exp.start_date }} → {{ exp.end_date or ("Atual" if exp.is_current else "—") }}</span>
                         </div>
-                        <div class="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                            {{ exp.company_name }}{% if exp.location %} · {{ exp.location }}{% endif %}
+
+                        <!-- Descrição Narrativa das Atividades -->
+                        {% if exp.description %}
+                        <p class="app-modal-text leading-relaxed whitespace-pre-line mt-1.5">
+                            {{ exp.description }}
+                        </p>
+                        {% endif %}
+
+                        <!-- Tópicos e Realizações (Bullet Points) -->
+                        {% if exp.bullet_points %}
+                        <ul class="list-disc list-inside app-modal-text space-y-1 leading-relaxed mt-1.5 pl-1">
+                            {% for bullet in exp.bullet_points %}
+                            <li>{{ bullet }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+
+                        <!-- Resultados Quantificáveis -->
+                        {% if exp.quantifiable_results %}
+                        <div class="space-y-1 mt-1.5 pt-1">
+                            {% for res in exp.quantifiable_results %}
+                            <div class="text-xs text-emerald-600 dark:text-emerald-400 flex items-start gap-1.5">
+                                <span class="text-xs">📈</span>
+                                <span>{{ res }}</span>
+                            </div>
+                            {% endfor %}
                         </div>
+                        {% endif %}
+
+                        <!-- Tecnologias e Ferramentas -->
                         {% if exp.tech_stack %}
-                        <div class="flex flex-wrap gap-1 mt-2">
+                        <div class="flex flex-wrap gap-1 mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
                             {% for tech in exp.tech_stack %}
-                            <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                            <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300/40 dark:border-slate-600/50">
                                 {{ tech }}
                             </span>
                             {% endfor %}
@@ -135,11 +170,38 @@
             </div>
             {% endif %}
 
+            <!-- Lista de Formações Acadêmicas Encontradas -->
+            {% if parsed_dto.educations %}
+            <div class="space-y-2.5">
+                <h4 class="app-modal-subtitle font-bold uppercase tracking-wider">
+                    Formação Acadêmica
+                </h4>
+                <div class="space-y-2">
+                    {% for edu in parsed_dto.educations %}
+                    <div class="app-modal-card space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="app-modal-value text-xs">{{ edu.degree }} em {{ edu.field_of_study }}</span>
+                            <span class="text-xs app-modal-label font-mono">{{ edu.start_date }} → {{ edu.end_date or ("Atual" if edu.is_current else "—") }}</span>
+                        </div>
+                        <div class="app-modal-text">
+                            {{ edu.institution_name }}
+                        </div>
+                        {% if edu.description %}
+                        <p class="app-modal-text mt-1 leading-relaxed">
+                            {{ edu.description }}
+                        </p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Lista de Skills Encontradas -->
             {% if parsed_dto.skills %}
-            <div>
-                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                    Competências Mapeadas
+            <div class="space-y-2.5">
+                <h4 class="app-modal-subtitle font-bold uppercase tracking-wider">
+                    Competências Mapeadas ({{ parsed_dto.skills | length }})
                 </h4>
                 <div class="flex flex-wrap gap-1.5">
                     {% for skill in parsed_dto.skills %}
@@ -151,10 +213,82 @@
             </div>
             {% endif %}
 
+            <!-- Lista de Idiomas Encontrados -->
+            {% if parsed_dto.languages %}
+            <div class="space-y-2.5">
+                <h4 class="app-modal-subtitle font-bold uppercase tracking-wider">
+                    Idiomas Mapeados
+                </h4>
+                <div class="flex flex-wrap gap-2">
+                    {% for lang in parsed_dto.languages %}
+                    <div class="app-modal-card py-1.5 px-3 flex items-center gap-1.5 text-xs">
+                        <strong class="app-modal-value">{{ lang.language_name }}</strong>
+                        <span class="app-modal-label">({{ lang.proficiency_level }})</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Lista de Projetos Encontrados -->
+            {% if parsed_dto.projects %}
+            <div class="space-y-2.5">
+                <h4 class="app-modal-subtitle font-bold uppercase tracking-wider">
+                    Projetos Identificados ({{ parsed_dto.projects | length }})
+                </h4>
+                <div class="space-y-3">
+                    {% for proj in parsed_dto.projects %}
+                    <div class="app-modal-card space-y-2">
+                        <div class="flex items-start justify-between gap-2">
+                            <div>
+                                <span class="app-modal-value text-sm">{{ proj.title or proj.name }}</span>
+                                {% if proj.role %}
+                                <span class="ml-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-medium">· {{ proj.role }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="flex items-center gap-2">
+                                {% if proj.repository_url %}
+                                <a href="{{ proj.repository_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">GitHub ↗</a>
+                                {% endif %}
+                                {% if proj.live_url or proj.project_url %}
+                                <a href="{{ proj.live_url or proj.project_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Link ↗</a>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        {% if proj.description %}
+                        <p class="app-modal-text leading-relaxed whitespace-pre-line mt-1">
+                            {{ proj.description }}
+                        </p>
+                        {% endif %}
+
+                        {% if proj.bullet_points %}
+                        <ul class="list-disc list-inside app-modal-text space-y-1 leading-relaxed mt-1 pl-1">
+                            {% for bullet in proj.bullet_points %}
+                            <li>{{ bullet }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+
+                        {% if proj.technologies %}
+                        <div class="flex flex-wrap gap-1 mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
+                            {% for tech in proj.technologies %}
+                            <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300/40 dark:border-slate-600/50">
+                                {{ tech }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
         </div>
 
         <!-- Rodapé com Ações -->
-        <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850/50 flex items-center justify-end gap-3">
+        <div class="app-modal-footer">
             <button 
                 type="button" 
                 onclick="closeModal()" 
@@ -162,15 +296,14 @@
                 Descartar
             </button>
             
-            <form hx-post="/profile/confirm-import" hx-target="#main-content" hx-indicator="#confirm-spinner">
+            <form hx-post="/profile/confirm-import" hx-target="#main-content" hx-indicator="#confirm-spinner" hx-disabled-elt="#confirm-import-btn">
                 <input type="hidden" name="payload" value='{{ serialized_dto }}'>
                 <button 
                     type="submit" 
                     id="confirm-import-btn"
-                    onclick="closeModal()"
-                    class="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md hover:shadow-indigo-500/20 transition-all cursor-pointer">
+                    class="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md hover:shadow-indigo-500/20 transition-all cursor-pointer">
                     <span id="confirm-spinner" class="htmx-indicator animate-spin">⟳</span>
-                    Confirmar e Integrar ao Dossiê
+                    <span>Confirmar e Integrar ao Dossiê</span>
                 </button>
             </form>
         </div>

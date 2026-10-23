@@ -8,6 +8,14 @@ echo ====================================================================
 echo.
 
 cd /d "%~dp0"
+if exist "..\backend" (
+    cd ..
+)
+
+:: 0. Liberar porta 8000 se houver processo zumbi anterior
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8000" ^| findstr "LISTENING"') do (
+    taskkill /f /pid %%a >nul 2>&1
+)
 
 :: 1. Compilar Tailwind CSS
 echo [1/3] Compilando estilos Tailwind CSS...
